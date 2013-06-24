@@ -39,10 +39,10 @@ table.stat_table td {
 	border-color: #666666;
 	background-color: #ffffff;
 }
-.divScroll {  
-	height: 200px;  
-	overflow: scroll;  
-}  
+.divScroll {
+	height: 200px;
+	overflow: scroll;
+}
 
 a.selectedmode { background-color: yellow; }
 
@@ -101,7 +101,7 @@ function goto( mode)
 <section class="container">
 <div class="instructor-dashboard-wrapper">
 
-  <div class="beta-button-wrapper"><a href="${ beta_dashboard_url }"> Beta Dashboard </a></div>
+  <div class="beta-button-wrapper"><a href="${ beta_dashboard_url }"> Try New Beta Dashboard </a></div>
 
   <section class="instructor-dashboard-content">
     <h1>Instructor Dashboard</h1>
@@ -116,7 +116,7 @@ function goto( mode)
           <a href="#" onclick="goto('Data');" class="${modeflag.get('Data')}">DataDump</a> |
           <a href="#" onclick="goto('Manage Groups');" class="${modeflag.get('Manage Groups')}">Manage Groups</a>
           %if settings.MITX_FEATURES.get('ENABLE_INSTRUCTOR_ANALYTICS'):
-             | <a href="#" onclick="goto('Analytics');" class="${modeflag.get('Analytics')}">Analytics</a> 
+             | <a href="#" onclick="goto('Analytics');" class="${modeflag.get('Analytics')}">Analytics</a>
           %endif
 	  ]
     </h2>
@@ -596,7 +596,7 @@ function goto( mode)
 
 %endif
 
-##----------------------------------------------------------------------------- 
+##-----------------------------------------------------------------------------
 
 %if datatable and modeflag.get('Psychometrics') is None:
 
