@@ -20,7 +20,7 @@ from django.http import Http404
 from django.conf import settings
 
 from xmodule.x_module import XModule
-from xmodule.raw_module import RawDescriptor
+from xmodule.editing_module import TabsEditingDescriptor
 from xmodule.modulestore.mongo import MongoModuleStore
 from xmodule.modulestore.django import modulestore
 from xmodule.contentstore.content import StaticContent
@@ -176,6 +176,21 @@ class VideoAlphaModule(VideoAlphaFields, XModule):
         })
 
 
-class VideoAlphaDescriptor(VideoAlphaFields, RawDescriptor):
+class VideoAlphaDescriptor(VideoAlphaFields, TabsEditingDescriptor):
     """Descriptor for `VideoAlphaModule`."""
     module_class = VideoAlphaModule
+    template_dir_name = "videoalpha"
+    common_tabs_styles = {'scss':  [resource_string(__name__,
+                                                    'css/videoalpha/common_tabs_edit.scss')]}
+    tabs = [
+        {
+            'name': "XML",
+            'template': "tabs/codemirror-edit.html",
+            'css': {'scss': [resource_string(__name__, 'css/tabs/codemirror.scss')]},
+            'current': True,
+        },
+        {
+            'name': "Subtitles",
+            'template': "videoalpha/subtitles.html",
+        }
+    ]
