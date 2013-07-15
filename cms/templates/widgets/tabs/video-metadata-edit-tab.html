@@ -32,7 +32,7 @@
         TabsEditingDescriptor['tabs_save_functions']['${html_id}'] = TabsEditingDescriptor['tabs_save_functions']['${html_id}']  || {}
 
         TabsEditingDescriptor['tabs_save_functions']['${html_id}']['${tabName}'] = function() {
-            var $codemirror = $("#advanced-${html_id}").data('CodeMirror');
+            var $codemirror = $("#xml-${html_id}").data('CodeMirror');
 
             return function(){
               return $codemirror.getValue();
@@ -43,4 +43,4 @@
 </script>
 
 
-<div class="wrapper-comp-settings metadata_edit" id="settings-tab" data-metadata='${json.dumps(metadata_field_copy) | h}'/>
+<div class="wrapper-comp-settings metadata_edit" id="settings-tab" data-metadata='${json.dumps(editable_metadata_fields) | h}'/>
