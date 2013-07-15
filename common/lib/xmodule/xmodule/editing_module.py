@@ -39,9 +39,6 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
 
     This class is intended to be used as a mixin.
 
-    Only one inner editor in tabs is supported in front-end. It means that
-    you should have only one CodeMirror among tabs, one Tiny MCE, etc.
-
     Always shows settings as tab.
     """
     mako_template = "widgets/tabs-aggregator.html"
