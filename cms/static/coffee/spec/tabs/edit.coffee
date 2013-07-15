@@ -8,9 +8,9 @@ describe "TabsEditingDescriptor", ->
     @html_id = 'test_id'
     window.TabsEditingDescriptor['tabs_save_functions'][@html_id] = {}
     window.TabsEditingDescriptor['tabs_save_functions'][@html_id]['Tab 0'] = ->
-      'Advanced Editor Text'
+      'XML Editor Text'
     window.TabsEditingDescriptor['tabs_save_functions'][@html_id]['Tab 1'] = ->
-      'Advanced Editor Text'
+      'XML Editor Text'
 
     spyOn($.fn, 'hide').andCallThrough()
     spyOn($.fn, 'show').andCallThrough()
@@ -56,7 +56,7 @@ describe "TabsEditingDescriptor", ->
 
       editBox.data('CodeMirror', CodeMirrorStub)
       data = @descriptor.save().data
-      expect(data).toEqual('Advanced Editor Text')
+      expect(data).toEqual('XML Editor Text')
 
     it "detach click event", ->
       spyOn($.fn, "off")

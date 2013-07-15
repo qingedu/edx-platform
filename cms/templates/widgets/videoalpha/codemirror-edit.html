@@ -1,7 +1,7 @@
 <%! from django.utils.translation import ugettext as _ %>
 <%page args="tabName"/>
 <div>
-  <textarea id="advanced-${html_id}" class="edit-box">${data | h}</textarea>
+  <textarea id="xml-${html_id}" class="edit-box">${data | h}</textarea>
 </div>
 
 <script type='text/javascript'>
@@ -12,8 +12,8 @@
 
         ## Init CodeMirror editor
         var
-          $el = $("#advanced-${html_id}"),
-          advanced_editor = CodeMirror.fromTextArea(
+          $el = $("#xml-${html_id}"),
+          xml_editor = CodeMirror.fromTextArea(
             $el.get(0), {
               mode: "application/xml",
               lineNumbers: true,
@@ -22,14 +22,14 @@
           );
         ## Save link to CodeMirror in data attribute CodeMirror for further using in
         ## TabsEditingDescriptor for save data
-        $el.data('CodeMirror', advanced_editor);
+        $el.data('CodeMirror', xml_editor);
 
 
         ## Callback that ensures data sync between tabs
         TabsEditingDescriptor.registerTabCallback('${html_id}', '${tabName}', function(previous_tab){
           ## CodeMirror should get focus when tab is active
-          advanced_editor.refresh();
-          advanced_editor.focus();
+          xml_editor.refresh();
+          xml_editor.focus();
         })
 
 
@@ -39,7 +39,7 @@
         TabsEditingDescriptor['tabs_save_functions']['${html_id}'] = TabsEditingDescriptor['tabs_save_functions']['${html_id}']  || {}
 
         TabsEditingDescriptor['tabs_save_functions']['${html_id}']['${tabName}'] = function(){
-          return function(){  return advanced_editor.getValue();}
+          return function(){  return xml_editor.getValue();}
         }();
       }());
     });
