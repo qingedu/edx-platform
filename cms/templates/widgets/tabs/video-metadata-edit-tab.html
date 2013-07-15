@@ -1,8 +1,5 @@
-<%! from django.utils.translation import ugettext as _ %>
 <%namespace name='static' file='../../static_content.html'/>
-<%page args="tabName"/>
 <%
-  import copy
   import json
 %>
 
@@ -22,25 +19,5 @@
 <script id="metadata-option-entry" type="text/template">
     <%static:include path="js/metadata-option-entry.underscore" />
 </script>
-
-<script type='text/javascript'>
-    $(document).ready(function(){
-      (function(){
-        ## Save function - executes when pressing save - to get information from nested editor,
-
-        ## should be set, as templates executes before tabs-aggregator coffee executes
-        TabsEditingDescriptor['tabs_save_functions']['${html_id}'] = TabsEditingDescriptor['tabs_save_functions']['${html_id}']  || {}
-
-        TabsEditingDescriptor['tabs_save_functions']['${html_id}']['${tabName}'] = function() {
-            var $codemirror = $("#xml-${html_id}").data('CodeMirror');
-
-            return function(){
-              return $codemirror.getValue();
-            }
-        }();
-      }());
-    });
-</script>
-
 
 <div class="wrapper-comp-settings metadata_edit" id="settings-tab" data-metadata='${json.dumps(editable_metadata_fields) | h}'/>

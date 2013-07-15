@@ -5,39 +5,29 @@
 </div>
 
 <script type='text/javascript'>
-    $(document).ready(function(){
-      (function(){
-        ## Init CodeMirror editor
-        var
-          $el = $("#xml-${html_id}"),
-          xml_editor = CodeMirror.fromTextArea(
-            $el.get(0), {
-              mode: "application/xml",
-              lineNumbers: true,
-              lineWrapping: true
-            }
-          );
-        ## Save link to CodeMirror in data attribute CodeMirror for further using in
-        ## TabsEditingDescriptor for save data
-        $el.data('CodeMirror', xml_editor);
+  $(document).ready(function(){
+    (function(){
+      ## Init CodeMirror editor
+      var el = $("#xml-${html_id}"),
+           xml_editor = CodeMirror.fromTextArea(el.get(0), {
+             mode: "application/xml", 
+             lineNumbers: true, 
+             lineWrapping: true
+           });
 
+      window.TabsEditingDescriptorModel.add_save(
+        '${html_id}', 
+        '${tabName}',  
+        function()  { return xml_editor.getValue(); })       
 
-        ## Callback that ensures data sync between tabs
-        TabsEditingDescriptor.registerTabCallback('${html_id}', '${tabName}', function(previous_tab){
-          ## CodeMirror should get focus when tab is active
-          xml_editor.refresh();
-          xml_editor.focus();
+      window.TabsEditingDescriptorModel.add_onswitch(
+        '${html_id}', 
+        '${tabName}',  
+        function(){   
+            ## CodeMirror should get focus when tab is active
+            xml_editor.refresh();
+            xml_editor.focus();
         })
-
-
-        ## Save function - executes when pressing save - to get information from nested editor,
-
-        ## should be set, as templates executes before tabs-aggregator coffee executes
-        TabsEditingDescriptor['tabs_save_functions']['${html_id}'] = TabsEditingDescriptor['tabs_save_functions']['${html_id}']  || {}
-
-        TabsEditingDescriptor['tabs_save_functions']['${html_id}']['${tabName}'] = function(){
-          return function(){  return xml_editor.getValue();}
-        }();
-      }());
-    });
+    }());
+  });
 </script>
