@@ -51,7 +51,7 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
     js_module_name = "TabsEditingDescriptor"
     settings_tab = [{
         'name': "Settings",  # Do not rename settings tab.
-        'template': "tabs/metadata-edit-tab.html"
+        'template': "tabs/video-metadata-edit-tab.html"
     }]
     tabs = []
 
