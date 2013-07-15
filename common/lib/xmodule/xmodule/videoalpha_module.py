@@ -185,7 +185,7 @@ class VideoAlphaDescriptor(VideoAlphaFields, TabsEditingDescriptor):
     tabs = [
         {
             'name': "XML",
-            'template': "tabs/codemirror-edit.html",
+            'template': "videoalpha/codemirror-edit.html",
             'css': {'scss': [resource_string(__name__, 'css/tabs/codemirror.scss')]},
             'current': True,
         },
