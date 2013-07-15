@@ -1,0 +1,68 @@
+
+// overrides for video component editor
+.component-editor .xmodule_edit.xmodule_VideoAlphaDescriptor .editor-with-tabs .component-name {
+  position: relative;
+  left: 0;
+  top: 0 !important;
+}
+
+.component-editor .xmodule_edit.xmodule_VideoAlphaDescriptor .tabs-wrapper {
+  padding-top: 0;
+}
+
+// styles duped from _unit.scss - Edit Header (Component Name, Mode-Editor, Mode-Settings)
+.component-edit-modes .wrapper-comp-editor .editor-with-tabs .edit-header {
+  @include box-sizing(border-box);
+  padding: 18px 0 18px $baseline;
+  top: 0 !important; // ugly override for second level tab override
+  right: 0;
+  background-color: $blue;
+  border-bottom: 1px solid $blue-d2;
+  color: $white;
+
+  //Component Name
+  .component-name {
+    @extend .t-copy-sub1;
+    width: 50%;
+    color: $white;
+    font-weight: 600;
+
+    em {
+      display: inline-block;
+      margin-right: ($baseline/4);
+      font-weight: 400;
+      color: $white;
+    }
+  }
+
+  //Nav-Edit Modes
+  .editor-tabs {
+    list-style: none;
+    right: 0;
+    top: 0 !important;
+    position: absolute;
+    padding: 12px ($baseline*0.75);
+
+    .inner_tab_wrap {
+      display: inline-block;
+      margin-left: 8px;
+
+      a.tab {
+        @include blue-button;
+
+        &.current {
+          @include linear-gradient($blue, $blue);
+          box-shadow: inset 0 1px 2px 1px $shadow-l1;
+          background-color: $blue-d4;
+          border: none;
+          color: $blue-d1;
+          cursor: default;
+
+          &:hover {
+            box-shadow: inset 0 1px 2px 1px  $shadow;
+          }
+        }
+      }
+    }
+  }
+}
