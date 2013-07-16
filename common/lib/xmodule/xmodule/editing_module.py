@@ -39,23 +39,21 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
 
     This class is intended to be used as a mixin.
 
-    Always shows settings as tab.
+    Engine (module_edit.js) wants for metadata editor
+    template to be always loaded, so don't forget to include
+    settings tab in your module descriptor.
     """
     mako_template = "widgets/tabs-aggregator.html"
     css = {'scss': [resource_string(__name__, 'css/tabs/tabs.scss')]}
     common_tabs_styles = {}
     js = {'coffee': [resource_string(__name__, 'js/src/tabs/tabs-aggregator.coffee')]}
     js_module_name = "TabsEditingDescriptor"
-    settings_tab = [{
-        'name': "Settings",  # Do not rename settings tab.
-        'template': "tabs/video-metadata-edit-tab.html"
-    }]
     tabs = []
 
     def get_context(self):
         _context = super(TabsEditingDescriptor, self).get_context()
         _context.update({
-            'tabs': self.tabs + self.settings_tab,
+            'tabs': self.tabs,
             'html_id': self.location.html_id(),  # element_id
             'data': self.data,
         })

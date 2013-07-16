@@ -82,6 +82,15 @@ class @TabsEditingDescriptor
     isInactiveClass = TabsEditingDescriptor.isInactiveClass
     $currentTarget = $(e.currentTarget)
 
+    # hide old bar 
+    editorModeButton =  @element.find('#editor-mode').find("a")
+    editorModeButton.removeClass('is-set')
+    # and set metadata editor to active, it will be shown by tab engine
+    settingsEditor = @element.find('.wrapper-comp-settings')
+    settingsModeButton = @element.find('#settings-mode').find("a")
+    settingsEditor.addClass('is-active')
+    settingsModeButton.addClass('is-set')
+
     if not $currentTarget.hasClass('current') or firstTime is true
 
       previousTab = null
@@ -107,16 +116,6 @@ class @TabsEditingDescriptor
       # Tabs are implemeted like anchors. Therefore we can use hash to find
       # corresponding content
       content_id = $currentTarget.attr('href')
-
-      # Settings tab name is hardcoded!
-      if $currentTarget.html() is 'Settings'
-        settingsEditor = @element.find('.wrapper-comp-settings')
-        editorModeButton =  @element.find('#editor-mode').find("a")
-        settingsModeButton = @element.find('#settings-mode').find("a")
-
-        editorModeButton.removeClass('is-set')
-        settingsEditor.addClass('is-active')
-        settingsModeButton.addClass('is-set')
 
       @$content
         .addClass(isInactiveClass)
