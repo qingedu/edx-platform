@@ -33,6 +33,7 @@ import analytics.csvs
 
 log = logging.getLogger(__name__)
 
+
 def common_exceptions_400(func):
     """
     Catches common exceptions and renders matching 400 errors.
