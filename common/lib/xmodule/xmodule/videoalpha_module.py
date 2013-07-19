@@ -180,8 +180,7 @@ class VideoAlphaDescriptor(VideoAlphaFields, TabsEditingDescriptor):
     """Descriptor for `VideoAlphaModule`."""
     module_class = VideoAlphaModule
     template_dir_name = "videoalpha"
-    common_tabs_styles = {'scss':  [resource_string(__name__,
-                                                    'css/videoalpha/common_tabs_edit.scss')]}
+
     tabs = [
         {
             'name': "XML",

@@ -45,7 +45,6 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
     """
     mako_template = "widgets/tabs-aggregator.html"
     css = {'scss': [resource_string(__name__, 'css/tabs/tabs.scss')]}
-    common_tabs_styles = {}
     js = {'coffee': [resource_string(__name__, 'js/src/tabs/tabs-aggregator.coffee')]}
     js_module_name = "TabsEditingDescriptor"
     tabs = []
@@ -69,13 +68,6 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
                     cls.css[css_type].extend(css_content)
                 else:
                     cls.css[css_type] = css_content
-
-        # load class css, common to every tab in class
-        for css_type, css_content in cls.common_tabs_styles.items():
-            if css_type in cls.css:
-                cls.css[css_type].extend(css_content)
-            else:
-                cls.css[css_type] = css_content
         return cls.css
 
 
