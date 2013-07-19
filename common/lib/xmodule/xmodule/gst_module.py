@@ -10,19 +10,56 @@ from lxml import html
 import xmltodict
 
 from xmodule.mako_module import MakoModuleDescriptor
+from xmodule.editing_module import XMLEditingDescriptor
 from xmodule.xml_module import XmlDescriptor
 from xmodule.x_module import XModule
 from xmodule.stringify import stringify_children
 from pkg_resources import resource_string
 from xblock.core import String, Scope
 
+import textwrap
 
 log = logging.getLogger(__name__)
 
 
 class GraphicalSliderToolFields(object):
-    render = String(scope=Scope.content)
-    configuration = String(scope=Scope.content)
+    render = String(scope=Scope.content,
+                    default=textwrap.dedent('''\
+                            <render>
+                            <h2>Graphic slider tool: Dynamic range and implicit functions.</h2>
+
+                            <p>You can make x range (not ticks of x axis) of functions to depend on
+                              parameter value. This can be useful when function domain depends
+                              on parameter.</p>
+                            <p>Also implicit functons like circle can be plotted as 2 separate
+                                functions of same color.</p>
+                             <div style="height:50px;">
+                             <slider var='a' style="width:400px;float:left;"/>
+                             <textbox var='a' style="float:left;width:60px;margin-left:15px;"/>
+                           </div>
+                            <plot style="margin-top:15px;margin-bottom:15px;"/>
+                            </render>'''))
+    configuration = String(scope=Scope.content,
+                        default=textwrap.dedent('''\
+                          <configuration>
+                            <parameters>
+                                <param var="a" min="5" max="25" step="0.5" initial="12.5" />
+                            </parameters>
+                            <functions>
+                              <function color="red">Math.sqrt(a * a - x * x)</function>
+                              <function color="red">-Math.sqrt(a * a - x * x)</function>
+                            </functions>
+                            <plot>
+                              <xrange>
+                                <!-- dynamic range -->
+                                  <min>-a</min>
+                                  <max>a</max>
+                              </xrange>
+                              <num_points>1000</num_points>
+                              <xticks>-30, 6, 30</xticks>
+                              <yticks>-30, 6, 30</yticks>
+                            </plot>
+                          </configuration>'''))
 
 
 class GraphicalSliderToolModule(GraphicalSliderToolFields, XModule):
@@ -139,7 +176,7 @@ class GraphicalSliderToolModule(GraphicalSliderToolFields, XModule):
                 '">' + self.configuration + '</root>'))
 
 
-class GraphicalSliderToolDescriptor(GraphicalSliderToolFields, MakoModuleDescriptor, XmlDescriptor):
+class GraphicalSliderToolDescriptor(GraphicalSliderToolFields, XMLEditingDescriptor, XmlDescriptor):
     module_class = GraphicalSliderToolModule
 
     @classmethod
