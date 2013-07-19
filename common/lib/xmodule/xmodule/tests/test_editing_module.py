@@ -6,7 +6,7 @@ import logging
 
 from mock import Mock
 from pkg_resources import resource_string
-from xmodule.videoalpha_module import VideoAlphaDescriptor
+from xmodule.editing_module import TabsEditingDescriptor
 
 from .import get_test_system
 
@@ -35,11 +35,15 @@ class TabsEditingDescriptorTestCase(unittest.TestCase):
             {
                 'name': "Subtitles",
                 'template': "videoalpha/subtitles.html",
+            },
+            {
+                'name': "Settings",
+                'template': "tabs/video-metadata-edit-tab.html"
             }
         ]
 
-        VideoAlphaDescriptor.tabs = self.tabs
-        self.descriptor = VideoAlphaDescriptor(
+        TabsEditingDescriptor.tabs = self.tabs
+        self.descriptor = TabsEditingDescriptor(
             runtime=system,
             model_data={})
 
@@ -50,15 +54,10 @@ class TabsEditingDescriptorTestCase(unittest.TestCase):
         test_css_file = os.path.join(test_files_dir, 'test_tabseditingdescriptor.scss')
         with open(test_css_file) as new_css:
             added_css = new_css.read()
-        #from tab
         self.assertEqual(css['scss'].pop(), added_css)
         self.assertEqual(css['css'].pop(), added_css)
 
     def test_get_context(self):
         """"test get_context"""
         rendered_context = self.descriptor.get_context()
-        self.assertListEqual(
-            rendered_context['tabs'],
-            self.tabs +
-            [{'name': "Settings",  # Do not rename settings tab.
-             'template': "tabs/metadata-edit-tab.html"}])
+        self.assertListEqual(rendered_context['tabs'], self.tabs)
