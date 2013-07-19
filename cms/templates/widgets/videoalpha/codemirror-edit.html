@@ -6,14 +6,13 @@
 
 <script type='text/javascript'>
   $(document).ready(function(){
-    (function(){
       ## Init CodeMirror editor
       var el = $("#xml-${html_id}"),
-           xml_editor = CodeMirror.fromTextArea(el.get(0), {
-             mode: "application/xml", 
-             lineNumbers: true, 
-             lineWrapping: true
-           });
+            xml_editor = CodeMirror.fromTextArea(el.get(0), {
+              mode: "application/xml", 
+              lineNumbers: true, 
+              lineWrapping: true
+            });
 
       window.TabsEditingDescriptorModel.add_save(
         '${html_id}', 
@@ -27,7 +26,7 @@
             ## CodeMirror should get focus when tab is active
             xml_editor.refresh();
             xml_editor.focus();
-        })
-    }());
+        }
+      )
   });
 </script>
