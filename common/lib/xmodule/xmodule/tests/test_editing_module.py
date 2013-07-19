@@ -39,9 +39,6 @@ class TabsEditingDescriptorTestCase(unittest.TestCase):
         ]
 
         VideoAlphaDescriptor.tabs = self.tabs
-        VideoAlphaDescriptor.common_tabs_styles = {
-            'scss': [resource_string(__name__,
-            '../../test_files/test_tabseditingdescriptor.scss')]}
         self.descriptor = VideoAlphaDescriptor(
             runtime=system,
             model_data={})
@@ -54,8 +51,6 @@ class TabsEditingDescriptorTestCase(unittest.TestCase):
         with open(test_css_file) as new_css:
             added_css = new_css.read()
         #from tab
-        self.assertEqual(css['scss'].pop(), added_css)
-        # from common_tabs_styles
         self.assertEqual(css['scss'].pop(), added_css)
         self.assertEqual(css['css'].pop(), added_css)
 
