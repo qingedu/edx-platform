@@ -45,7 +45,8 @@ class TabsEditingDescriptor(EditingFields, MakoModuleDescriptor):
     """
     mako_template = "widgets/tabs-aggregator.html"
     css = {'scss': [resource_string(__name__, 'css/tabs/tabs.scss')]}
-    js = {'coffee': [resource_string(__name__, 'js/src/tabs/tabs-aggregator.coffee')]}
+    js = {'coffee': [resource_string(
+        __name__, 'js/src/tabs/tabs-aggregator.coffee')]}
     js_module_name = "TabsEditingDescriptor"
     tabs = []
 
