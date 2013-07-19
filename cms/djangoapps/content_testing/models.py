@@ -49,7 +49,34 @@ class ContentTest(models.Model):
     @property
     def capa_problem(self):
         # create a preview capa problem
-        return self.capa_module().lcp
+        lcp = self.capa_module().lcp
+
+        from lxml import etree
+
+        # override html methods
+        for key in lcp.responders:
+
+            # define wrapper
+            def wrapper(func):
+                def html_wrapper(*args, **kwargs):
+
+                    # make surrounding div for each response
+                    div = etree.Element('div')
+                    div.set('class', "verdict-response-wrapper")
+
+                    # should_be choice for this response
+                    buttons = etree.fromstring(self._should_be_buttons(self.should_be))
+
+                    div.append(func(*args, **kwargs))
+                    div.append(buttons)
+                    return div
+
+                return html_wrapper
+
+            # execute the override
+            lcp.responders[key].render_html = wrapper(lcp.responders[key].render_html)
+
+        return lcp
 
     def capa_module(self):
         # create a preview of the capa_module
@@ -140,32 +167,43 @@ class ContentTest(models.Model):
         html_form = re.sub(remove_form_open, '', html_form)
         html_form = re.sub(remove_form_close, '', html_form)
 
-        # add correctness boxes
+        # add the radio buttons
+        html_form = html_form + self._should_be_buttons(self.should_be)
+        return html_form
+
+#======= Private Methods =======#
+
+    def _should_be_buttons(self, resp_should_be):
+        """
+        given an individual should_be, generate the appropriate radio buttons
+        """
+
+        # default to filling in the correct bubble
         context = {
             "check_correct": "checked=\"True\"",
             "check_incorrect": "",
             "check_error": ""
         }
 
-        if hasattr(self, 'should_be'):
-            if self.should_be.lower() == "incorrect":
-                context = {
-                    "check_correct": "",
-                    "check_incorrect": "checked=\"True\"",
-                    "check_error": ""
-                }
-            elif self.should_be.lower() == "error":
-                context = {
-                    "check_correct": "",
-                    "check_incorrect": "",
-                    "check_error": "checked=\"True\""
-                }
+        if resp_should_be.lower() == "incorrect":
+            context = {
+                "check_correct": "",
+                "check_incorrect": "checked=\"True\"",
+                "check_error": ""
+            }
+        elif resp_should_be.lower() == "error":
+            context = {
+                "check_correct": "",
+                "check_incorrect": "",
+                "check_error": "checked=\"True\""
+            }
 
-        buttons = render_to_string('content_testing/form_bottom.html', context)
-        html_form = html_form + buttons
-        return html_form
+        string = render_to_string('content_testing/form_bottom.html', context)
+        fp = open('/Users/irh/Desktop/out.txt', 'w')
+        fp.write(string)
+        fp.close()
 
-#======= Private Methods =======#
+        return render_to_string('content_testing/form_bottom.html', context)
 
     def _evaluate(self, response_dict):
         """

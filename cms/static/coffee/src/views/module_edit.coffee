@@ -5,11 +5,9 @@ class CMS.Views.ModuleEdit extends Backbone.View
 
   events:
     "click .component-editor .cancel-button": 'clickCancelButton'
-    "click .component-tester .cancel-button": 'clickCancelButton'
     "click .component-editor .save-button": 'clickSaveButton'
     "click .component-actions .edit-button": 'clickEditButton'
     "click .component-actions .delete-button": 'onDelete'
-    "click .component-actions .test-button": 'clickTestButton'
     "click .mode a": 'clickModeButton'
 
   initialize: ->
@@ -17,7 +15,6 @@ class CMS.Views.ModuleEdit extends Backbone.View
     @render()
 
   $component_editor: => @$el.find('.component-editor')
-  $component_tester: => @$el.find('.component-tester')
 
   loadDisplay: ->
     XModule.loadModule(@$el.find('.xmodule_display'))
@@ -47,40 +44,6 @@ class CMS.Views.ModuleEdit extends Backbone.View
         [@metadataEditor.getDisplayName()])
       @$el.find('.component-name').html(title)
 
-  loadTest: ->
-    if not @module
-      @module = XModule.loadModule(@$el.find('.xmodule_edit'))
-      # At this point, metadata-edit.html will be loaded, and the metadata (as JSON) is available.
-      metadataEditor = @$el.find('.metadata_edit')
-      metadataData = metadataEditor.data('metadata')
-      models = [];
-      for key of metadataData
-        models.push(metadataData[key])
-      @metadataEditor = new CMS.Views.Metadata.Editor({
-          el: metadataEditor,
-          collection: new CMS.Models.MetadataCollection(models)
-          })
-
-      # Need to update set "active" class on data editor if there is one.
-      # If we are only showing settings, hide the data editor controls and update settings accordingly.
-      if @hasDataEditor()
-        @selectMode(@editorMode)
-      else
-        @hideDataEditor()
-
-      title = interpolate(gettext('<em>Testing:</em> %s'),
-        [@metadataEditor.getDisplayName()])
-      @$el.find('.component-name').html(title)
-
-      # try to load test-data
-      $.get "/test_problem/", {
-          location: 'i4x:/test/123/problem/b0be451a94504a6aad56ed239bf4e70d'
-          },
-          (test_data) =>
-            @$el.find('.component-paragraph').html(test_data)
-          'html'
-
-
   customMetadata: ->
       # Hack to support metadata fields that aren't part of the metadata editor (ie, LaTeX high level source).
       # Walk through the set of elements which have the 'data-metadata_name' attribute and
@@ -93,14 +56,15 @@ class CMS.Views.ModuleEdit extends Backbone.View
   changedMetadata: ->
     return _.extend(@metadataEditor.getModifiedMetadataValues(), @customMetadata())
 
-  cloneTemplate: (parent, template) ->
-    $.post("/clone_item", {
-      parent_location: parent
-      template: template
-    }, (data) => 
-      @model.set(id: data.id)
-      @$el.data('id', data.id)
-      @render()
+  createItem: (parent, payload) ->
+    payload.parent_location = parent
+    $.post(
+        "/create_item"
+        payload 
+        (data) => 
+            @model.set(id: data.id)
+            @$el.data('id', data.id)
+            @render()
     )
 
   render: ->
@@ -133,7 +97,6 @@ class CMS.Views.ModuleEdit extends Backbone.View
     event.preventDefault()
     @$el.removeClass('editing')
     @$component_editor().slideUp(150)
-    @$component_tester().slideUp(150)
     @hideModal()
 
   hideModal: ->
@@ -181,12 +144,3 @@ class CMS.Views.ModuleEdit extends Backbone.View
     editorModeButtonParent.removeClass('active-mode')
     @$el.find('.wrapper-comp-settings').addClass('is-active')
     @$el.find('#settings-mode').find("a").addClass('is-set')
-
-  clickTestButton: (event) ->
-    event.preventDefault()
-    @$el.addClass('editing')
-    $modalCover.show().addClass('is-fixed')
-    @$component_tester().slideDown(150)
-    @loadTest()
-    
-
