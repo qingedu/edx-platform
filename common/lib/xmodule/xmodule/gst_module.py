@@ -10,7 +10,6 @@ from lxml import html
 import xmltodict
 
 from xmodule.mako_module import MakoModuleDescriptor
-from xmodule.editing_module import XMLEditingDescriptor
 from xmodule.xml_module import XmlDescriptor
 from xmodule.x_module import XModule
 from xmodule.stringify import stringify_children
@@ -176,8 +175,9 @@ class GraphicalSliderToolModule(GraphicalSliderToolFields, XModule):
                 '">' + self.configuration + '</root>'))
 
 
-class GraphicalSliderToolDescriptor(GraphicalSliderToolFields, XMLEditingDescriptor, XmlDescriptor):
+class GraphicalSliderToolDescriptor(GraphicalSliderToolFields, MakoModuleDescriptor, XmlDescriptor):
     module_class = GraphicalSliderToolModule
+    mako_template = "widgets/graphical_slider_tool-edit.html"
 
     @classmethod
     def definition_from_xml(cls, xml_object, system):
