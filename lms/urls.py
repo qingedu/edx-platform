@@ -20,11 +20,6 @@ urlpatterns = ('',  # nopep8
     url(r'^dashboard$', 'student.views.dashboard', name="dashboard"),
     url(r'^login$', 'student.views.signin_user', name="signin_user"),
     url(r'^register$', 'student.views.register_user', name="register_user"),
-
-    #CME Registration
-    url(r'^register/cme$', 'cme_registration.views.register_user', name='cme_register_user'),
-    url(r'^cme_create_account$', 'cme_registration.views.cme_create_account', name='cme_create_account'),
-
     url(r'^admin_dashboard$', 'dashboard.views.dashboard'),
 
     url(r'^change_email$', 'student.views.change_email_request', name="change_email"),
@@ -419,6 +414,12 @@ if settings.MITX_FEATURES.get('RUN_AS_ANALYTICS_SERVER_ENABLED'):
         url(r'^edinsights_service/', include('edinsights.core.urls')),
     )
     import edinsights.core.registry
+
+    #CME Registration
+if settings.MITX_FEATURES.get('USE_CME_REGISTRATION'):
+    urlpatterns += (
+        url(r'^register/', include('cme_registration.urls')),
+                    )
 
 # FoldIt views
 urlpatterns += (

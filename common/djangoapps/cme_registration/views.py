@@ -1,5 +1,6 @@
 import json
 import logging
+from statsd import statsd
 
 from django_future.csrf import ensure_csrf_cookie
 from django.conf import settings
@@ -15,22 +16,22 @@ from django.core.mail import send_mail
 from student.models import (Registration, UserProfile)
 from cme_registration.models import CmeUserProfile
 from student.views import try_change_enrollment
-
 from mitxmako.shortcuts import render_to_response, render_to_string
 
-from statsd import statsd
 
 log = logging.getLogger("mitx.student")
 
 
 @ensure_csrf_cookie
-def register_user(request, extra_context={}):
+def cme_register_user(request, extra_context={}):
     """
-    This view will display the non-modal registration form
+    This view will display the non-modal registration form which has been customised
+    from the standard registration form for CME.
     """
     if request.user.is_authenticated():
         return redirect(reverse('dashboard'))
 
+    #Construct dicts for specialty and sub-specialty dropdowns
     SPECIALTY_CHOICES = {}
     SUB_SPECIALTY_CHOICES = {}
 
@@ -124,50 +125,50 @@ def register_user(request, extra_context={}):
                                       ('Other', 'Other, please enter:'))
 
     SPECIALTY_CHOICES['Both'] = (('Addiction_Medicine', 'Addiction Medicine'),
-                                                   ('Adolescent_Medicine', 'Adolescent Medicine'),
-                                                   ('Allergy', 'Allergy'),
-                                                   ('Anesthesiology', 'Anesthesiology'),
-                                                   ('Cardiology', 'Cardiology'),
-                                                   ('Complimentary_Medicine', 'Complimentary Medicine'),
-                                                   ('Critical_Care_Medicine_&_ICU', 'Critical Care Medicine & ICU'),
-                                                   ('Dentistry', 'Dentistry'),
-                                                   ('Dermatology', 'Dermatology'),
-                                                   ('Emergency_Medicine', 'Emergency Medicine'),
-                                                   ('Endocrinology', 'Endocrinology'),
-                                                   ('Family_Practice', 'Family Practice'),
-                                                   ('Gastroenterology_&_Hepatology', 'Gastroenterology & Hepatology'),
-                                                   ('General_Practice', 'General Practice'),
-                                                   ('Gerontology', 'Gerontology'),
-                                                   ('Head_&_Neck_Surgery', 'Head & Neck Surgery'),
-                                                   ('Health_Education', 'Health Education'),
-                                                   ('Hematology', 'Hematology'),
-                                                   ('Immunology_&_Rheumatology', 'Immunology & Rheumatology'),
-                                                   ('Infectious_Disease', 'Infectious Disease'),
-                                                   ('Internal_Medicine', 'Internal Medicine'),
-                                                   ('Neonatology', 'Neonatology'),
-                                                   ('Nephrology', 'Nephrology'),
-                                                   ('Neurology', 'Neurology'),
-                                                   ('Neurosurgery', 'Neurosurgery'),
-                                                   ('Nutrition', 'Nutrition'),
-                                                   ('Obstetrics_&_Gynecology', 'Obstetrics & Gynecology'),
-                                                   ('Oncology', 'Oncology'),
-                                                   ('Ophthalmology', 'Ophthalmology'),
-                                                   ('Orthopaedic_Surgery', 'Orthopaedic Surgery'),
-                                                   ('Palliative_Care', 'Palliative Care'),
-                                                   ('Pathology', 'Pathology'),
-                                                   ('Pediatrics', 'Pediatrics'),
-                                                   ('Pharmacology', 'Pharmacology'),
-                                                   ('Physical_Medicine_&_Rehabilitation', 'Physical Medicine & Rehabilitation'),
-                                                   ('Psychiatry', 'Psychiatry'),
-                                                   ('Psychology', 'Psychology'),
-                                                   ('Public_Health', 'Public Health'),
-                                                   ('Pulmonology', 'Pulmonology'),
-                                                   ('Radiology', 'Radiology'),
-                                                   ('Radiation_Oncology', 'Radiation Oncology'),
-                                                   ('Surgery', 'Surgery'),
-                                                   ('Transplant', 'Transplant'),
-                                                   ('Urology', 'Urology'),
-                                                   ('Other', 'Other, please enter:'))
+                                 ('Adolescent_Medicine', 'Adolescent Medicine'),
+                                 ('Allergy', 'Allergy'),
+                                 ('Anesthesiology', 'Anesthesiology'),
+                                 ('Cardiology', 'Cardiology'),
+                                 ('Complimentary_Medicine', 'Complimentary Medicine'),
+                                 ('Critical_Care_Medicine_&_ICU', 'Critical Care Medicine & ICU'),
+                                 ('Dentistry', 'Dentistry'),
+                                 ('Dermatology', 'Dermatology'),
+                                 ('Emergency_Medicine', 'Emergency Medicine'),
+                                 ('Endocrinology', 'Endocrinology'),
+                                 ('Family_Practice', 'Family Practice'),
+                                 ('Gastroenterology_&_Hepatology', 'Gastroenterology & Hepatology'),
+                                 ('General_Practice', 'General Practice'),
+                                 ('Gerontology', 'Gerontology'),
+                                 ('Head_&_Neck_Surgery', 'Head & Neck Surgery'),
+                                 ('Health_Education', 'Health Education'),
+                                 ('Hematology', 'Hematology'),
+                                 ('Immunology_&_Rheumatology', 'Immunology & Rheumatology'),
+                                 ('Infectious_Disease', 'Infectious Disease'),
+                                 ('Internal_Medicine', 'Internal Medicine'),
+                                 ('Neonatology', 'Neonatology'),
+                                 ('Nephrology', 'Nephrology'),
+                                 ('Neurology', 'Neurology'),
+                                 ('Neurosurgery', 'Neurosurgery'),
+                                 ('Nutrition', 'Nutrition'),
+                                 ('Obstetrics_&_Gynecology', 'Obstetrics & Gynecology'),
+                                 ('Oncology', 'Oncology'),
+                                 ('Ophthalmology', 'Ophthalmology'),
+                                 ('Orthopaedic_Surgery', 'Orthopaedic Surgery'),
+                                 ('Palliative_Care', 'Palliative Care'),
+                                 ('Pathology', 'Pathology'),
+                                 ('Pediatrics', 'Pediatrics'),
+                                 ('Pharmacology', 'Pharmacology'),
+                                 ('Physical_Medicine_&_Rehabilitation', 'Physical Medicine & Rehabilitation'),
+                                 ('Psychiatry', 'Psychiatry'),
+                                 ('Psychology', 'Psychology'),
+                                 ('Public_Health', 'Public Health'),
+                                 ('Pulmonology', 'Pulmonology'),
+                                 ('Radiology', 'Radiology'),
+                                 ('Radiation_Oncology', 'Radiation Oncology'),
+                                 ('Surgery', 'Surgery'),
+                                 ('Transplant', 'Transplant'),
+                                 ('Urology', 'Urology'),
+                                 ('Other', 'Other, please enter:'))
 
     SUB_SPECIALTY_CHOICES['Cardiology'] = (('Cardiopulmonary', 'Cardiopulmonary'),
                                            ('Cardiothoracic', 'Cardiothoracic'),
@@ -192,10 +193,10 @@ def register_user(request, extra_context={}):
                                                   ('Other', 'Other, please enter:'))
 
     SUB_SPECIALTY_CHOICES['Obstetrics_Gynecology'] = (('Gynecology', 'Gynecology'),
-                                                        ('Obstetrics', 'Obstetrics'),
-                                                        ('Maternal_&_Fetal_Medicine', 'Maternal & Fetal Medicine'),
-                                                        ('Women_Health', 'Women\'s Health'),
-                                                        ('Other', 'Other, please enter:'))
+                                                      ('Obstetrics', 'Obstetrics'),
+                                                      ('Maternal_&_Fetal_Medicine', 'Maternal & Fetal Medicine'),
+                                                      ('Women_Health', 'Women\'s Health'),
+                                                      ('Other', 'Other, please enter:'))
 
     SUB_SPECIALTY_CHOICES['Oncology'] = (('Breast', 'Breast'),
                                          ('Gastroenterology', 'Gastroenterology'),
@@ -285,7 +286,7 @@ def register_user(request, extra_context={}):
 @ensure_csrf_cookie
 def cme_create_account(request, post_override=None):
     '''
-    JSON call to create new edX account.
+    JSON call to create new edX account; modified for the CME registration form.
     Used by form in signup_modal.html, which is included into navigation.html
     '''
     js = {'success': False}
@@ -299,29 +300,27 @@ def cme_create_account(request, post_override=None):
             js['field'] = a
             return HttpResponse(json.dumps(js))
 
-    required_post_vars = ['username', 'email', 'name', 'password', 'profession', 'license_number', 'patient_population', 
-                          'specialty', 'address_1', 'city', 'state_province', 'postal_code', 'country', 'phone_number', 'hear_about_us']
-    
     #Validate required felds
-    error = validate_required_fields(required_post_vars, post_vars)
-    if error != None:
+    error = validate_required_fields(post_vars)
+    if error is not None:
         return HttpResponse(json.dumps(error))
 
     #Validate required check boxes
     error = validate_required_boxes(post_vars)
-    if error != None:
+    if error is not None:
         return HttpResponse(json.dumps(error))
 
     #Validate required radio buttons
     error = validate_required_radios(post_vars)
-    if error != None:
+    if error is not None:
         return HttpResponse(json.dumps(error))
 
     #Validate required secondary fields
     error = validate_required_secondaries(post_vars)
-    if error != None:
+    if error is not None:
         return HttpResponse(json.dumps(error))
-    
+
+    #Validate email address
     try:
         validate_email(post_vars['email'])
     except ValidationError:
@@ -329,6 +328,7 @@ def cme_create_account(request, post_override=None):
         js['field'] = 'email'
         return HttpResponse(json.dumps(js))
 
+    #Validate username conforms
     try:
         validate_slug(post_vars['username'])
     except ValidationError:
@@ -385,12 +385,12 @@ def cme_create_account(request, post_override=None):
 
 def _do_cme_create_account(post_vars):
     """
-    Given cleaned post variables, create the User and UserProfile objects, as well as the
+    Given cleaned post variables, create the User, UserProfile and CmeUserProfile objects, as well as the
     registration for this user.
 
-    Returns a tuple (User, UserProfile, Registration).
-
-    Note: this function is also used for creating test users.
+    Returns a tuple (User, CmeUserProfile, Registration).
+    Since CmeUserProfile is implemented using multi-table inheritence of UserProfile, the CmeUserProfile object
+    will also contain all the UserProfile fields.
     """
     user = User(username=post_vars['username'],
                 email=post_vars['email'],
@@ -460,7 +460,7 @@ def _do_cme_create_account(post_vars):
     else:
         cme_user_profile.hear_about_us = post_vars.get('hear_about_us')
 
-    cme_user_profile.mailing_list = post_vars.get('mailing_list') if 'mailing_list' in post_vars else 0
+    cme_user_profile.mailing_list = 1 if post_vars.get('mailing_list') == 'true' else 0
 
     try:
         cme_user_profile.save()
@@ -469,55 +469,79 @@ def _do_cme_create_account(post_vars):
         log.exception("UserProfile creation failed for user {0}.".format(user.id))
     return (user, cme_user_profile, registration)
 
-def validate_required_fields(required_post_vars, post_vars):
-    
+
+def validate_required_fields(post_vars):
+    """
+    Checks that required free text fields contain at least 2 chars
+    `post_vars` is dict of post parameters (a `dict`)
+    Returns a dict indicating failure, field and message on empty field else None
+    """
+
+    #Add additional required fields here
+    REQUIRED_FIELDS_DICT = {'username': 'Username must be minimum of two characters long.',
+                            'email': 'A properly formatted e-mail is required.',
+                            'name': 'Your legal name must be a minimum of two characters long.',
+                            'password': 'A valid password is required.',
+                            'profession': 'Choose your profession.',
+                            'license_number': 'Enter your license number.',
+                            'patient_population': 'Choose your patient population',
+                            'specialty': 'Choose your specialty',
+                            'address_1': 'Enter your Address 01',
+                            'city': 'Enter your city',
+                            'state_province': 'Choose your state/Province',
+                            'postal_code': 'Enter your postal code',
+                            'country': 'Choose your country',
+                            'phone_number': 'Enter your phone number',
+                            'hear_about_us': 'Choose how you heard about us'
+                            }
+
     error = {}
-    for var in required_post_vars:
-        if len(post_vars[var]) < 2:
-            error_str = {'username': 'Username must be minimum of two characters long.',
-                         'email': 'A properly formatted e-mail is required.',
-                         'name': 'Your legal name must be a minimum of two characters long.',
-                         'password': 'A valid password is required.',
-                         'profession': 'Choose your profession.',
-                         'license_number': 'Enter your license number.',
-                         'patient_population': 'Choose your patient population',
-                         'specialty': 'Choose your specialty',
-                         'address_1': 'Enter your Address 01',
-                         'city': 'Enter your city',
-                         'state_province': "Choose your state/Province",
-                         'postal_code': 'Enter your postal code',
-                         'country': 'Choose your country',
-                         'phone_number': 'Enter your phone number',
-                         'hear_about_us': 'Choose how you heard about us'}
+    for k, v in REQUIRED_FIELDS_DICT.items():
+        if len(post_vars.get(k)) < 2:
             error['success'] = False
-            error['value'] = error_str[var]
-            error['field'] = var
+            error['value'] = v
+            error['field'] = k
             return error
-        
-        
+
+
 def validate_required_boxes(post_vars):
-    
-    REQUIRED_BOXES_DICT = {'terms_of_service': ("You must accept the terms of service.", 'terms_of_service'),
-                           'honor_code': ("To enroll, you must follow the honor code.", 'honor_code'),
+    """
+    Checks that required check boxes are checked
+    `post_vars is dict of post parameters (a `dict)
+    Returns a dict indicating failure, field and message on empty field else None
+    """
+
+    #Add additional required boxes here
+    REQUIRED_BOXES_DICT = {'terms_of_service': 'You must accept the terms of service.',
+                           'honor_code': 'To enroll, you must follow the honor code.',
                            }
-    
+
     error = {}
     for k, v in REQUIRED_BOXES_DICT.items():
         if post_vars.get(k, 'false') != u'true':
             error['success'] = False
-            error['value'] = v[0]
-            error['field'] = v[1]
+            error['value'] = v
+            error['field'] = k
             return error
- 
+
+
 def validate_required_secondaries(post_vars):
-    
+    """
+    Checks that required "secondary" text fields contain at least 2 chars. A secondary field is one that appears on the form if
+    the user chooses a particular value in the corresponding primary. E.g. if "Other" chosen in sub_specialty then the
+    sub_specialty_free secondary field pops up on the registration form.
+    `post_vars is dict of post parameters (a `dict)
+    Returns a dict indicating failure, field and message on empty field else None
+    """
+
+    #Add additional required secondaries here
     REQUIRED_SECONDARIES_DICT = {'stanford_affiliated': ('1', 'how_stanford_affiliated', 'Choose how you are affiliated with Stanford.'),
                                  'how_stanford_affiliated': ('Other', 'how_stanford_affiliated_free', 'Enter how you are affiliated with Stanford.'),
-                                 'specialty': ('Other', 'specialty_free','Enter your specialty.'),
+                                 'specialty': ('Other', 'specialty_free', 'Enter your specialty.'),
                                  'sub_specialty': ('Other', 'sub_specialty_free', 'Enter your sub-specialty.'),
                                  'hear_about_us': ('Other', 'hear_about_us_free', 'Enter how you heard about us.')
                                  }
-    
+
     error = {}
     for k, v in REQUIRED_SECONDARIES_DICT.items():
         if post_vars.get(k) == v[0] and len(post_vars.get(v[1])) < 2:
@@ -525,12 +549,19 @@ def validate_required_secondaries(post_vars):
             error['value'] = v[2]
             error['field'] = k
             return error
-        
+
+
 def validate_required_radios(post_vars):
-    
+    """
+    Checks that required radio buttons have been checked
+    `post_vars is dict of post parameters (a `dict)
+    Returns a dict indicating failure, field and message on empty field else None
+    """
+
+    #Add additional required radios here
     REQUIRED_RADIOS_DICT = {'stanford_affiliated': 'Select whether, or not, you are affiliated with Stanford.'
-                           }
-    
+                            }
+
     error = {}
     for k, v in REQUIRED_RADIOS_DICT.items():
         if k not in post_vars:

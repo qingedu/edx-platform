@@ -90,7 +90,6 @@ class CmeUserProfile(UserProfile):
                      ('Puerto Rico', 'Puerto Rico'),
                      ('Utah', 'Utah'),
                      ('Virgin Island', 'Virgin Island'),
-                     ('Other', 'Other'),
                      ('Alberta', 'Alberta'),
                      ('British Columbia', 'British Columbia'),
                      ('Manitoba', 'Manitoba'),
@@ -103,7 +102,8 @@ class CmeUserProfile(UserProfile):
                      ('Prince Edward Island', 'Prince Edward Island'),
                      ('Quebec', 'Quebec'),
                      ('Saskatchewan', 'Saskatchewan'),
-                     ('Yukon Territory', 'Yukon Territory'))
+                     ('Yukon Territory', 'Yukon Territory'),
+                     ('Other', 'Other'))
 
     state_province = models.CharField(blank=True, null=True, max_length=50, choices=STATE_CHOICES)
     postal_code = models.CharField(blank=True, null=True, max_length=20)
