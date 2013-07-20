@@ -24,8 +24,6 @@ from student.tests.factories import UserFactory
 class TestCmeRegistration(TestCase):
 
     def setUp(self):
-        
-        settings.MITX_FEATURES['USE_CME_REGISTRATION'] = True
 
         self.post_vars = {'username': 'testuser',
                           'email': 'test@email.com',

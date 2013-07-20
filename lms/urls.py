@@ -415,7 +415,7 @@ if settings.MITX_FEATURES.get('RUN_AS_ANALYTICS_SERVER_ENABLED'):
     )
     import edinsights.core.registry
 
-    #CME Registration
+#CME Registration
 if settings.MITX_FEATURES.get('USE_CME_REGISTRATION'):
     urlpatterns += (
         url(r'^register/', include('cme_registration.urls')),
