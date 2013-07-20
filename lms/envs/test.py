@@ -201,5 +201,6 @@ PASSWORD_HASHERS = (
 import openid.oidutil
 openid.oidutil.log = lambda message, level=0: None
 
-# Add app for CME Registration
+################### CME Registration app
 INSTALLED_APPS += ('cme_registration',)
+MITX_FEATURES['USE_CME_REGISTRATION'] = True
