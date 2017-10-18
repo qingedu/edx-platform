@@ -1,23 +1,26 @@
-import json
 import copy
+import json
 import logging
 import os
 import sys
-from collections import namedtuple
-from lxml import etree
 
-from xblock.core import Dict, Scope
-from xmodule.x_module import (XModuleDescriptor, policy_key)
-from xmodule.modulestore import Location
-from xmodule.modulestore.inheritance import own_metadata
-from xmodule.modulestore.xml_exporter import EdxJSONEncoder
+from lxml import etree
+from lxml.etree import Element, ElementTree, XMLParser
+from xblock.core import XML_NAMESPACES
+from xblock.fields import Dict, Scope, ScopeIds
+from xblock.runtime import KvsFieldData
+
+import dogstats_wrapper as dog_stats_api
+from xmodule.modulestore import EdxJSONEncoder
+from xmodule.modulestore.inheritance import InheritanceKeyValueStore, own_metadata
+from xmodule.x_module import DEPRECATION_VSCOMPAT_EVENT, XModuleDescriptor
 
 log = logging.getLogger(__name__)
 
 # assume all XML files are persisted as utf-8.
-edx_xml_parser = etree.XMLParser(dtd_validation=False, load_dtd=False,
-                                 remove_comments=True, remove_blank_text=True,
-                                 encoding='utf-8')
+EDX_XML_PARSER = XMLParser(dtd_validation=False, load_dtd=False,
+                           remove_comments=True, remove_blank_text=True,
+                           encoding='utf-8')
 
 
 def name_to_pathname(name):
@@ -50,33 +53,6 @@ def is_pointer_tag(xml_obj):
     has_text = xml_obj.text is not None and len(xml_obj.text.strip()) > 0
 
     return len(xml_obj) == 0 and actual_attr == expected_attr and not has_text
-
-
-def get_metadata_from_xml(xml_object, remove=True):
-    meta = xml_object.find('meta')
-    if meta is None:
-        return ''
-    dmdata = meta.text
-    if remove:
-        xml_object.remove(meta)
-    return dmdata
-
-_AttrMapBase = namedtuple('_AttrMap', 'from_xml to_xml')
-
-
-class AttrMap(_AttrMapBase):
-    """
-    A class that specifies two functions:
-
-        from_xml: convert value from the xml representation into
-            an internal python representation
-
-        to_xml: convert the internal python representation into
-            the value to store in the xml.
-    """
-    def __new__(_cls, from_xml=lambda x: x,
-                to_xml=lambda x: x):
-        return _AttrMapBase.__new__(_cls, from_xml, to_xml)
 
 
 def serialize_field(value):
@@ -124,16 +100,30 @@ def deserialize_field(field, value):
         return value
 
 
-class XmlDescriptor(XModuleDescriptor):
+class XmlParserMixin(object):
     """
-    Mixin class for standardized parsing of from xml
+    Class containing XML parsing functionality shared between XBlock and XModuleDescriptor.
     """
+    # Extension to append to filename paths
+    filename_extension = 'xml'
 
     xml_attributes = Dict(help="Map of unhandled xml attributes, used only for storage between import and export",
                           default={}, scope=Scope.settings)
 
-    # Extension to append to filename paths
-    filename_extension = 'xml'
+    # VS[compat].  Backwards compatibility code that can go away after
+    # importing 2012 courses.
+    # A set of metadata key conversions that we want to make
+    metadata_translations = {
+        'slug': 'url_name',
+        'name': 'display_name',
+    }
+
+    @classmethod
+    def _translate(cls, key):
+        """
+        VS[compat]
+        """
+        return cls.metadata_translations.get(key, key)
 
     # The attributes will be removed from the definition xml passed
     # to definition_from_xml, and from the xml returned by definition_to_xml
@@ -141,39 +131,28 @@ class XmlDescriptor(XModuleDescriptor):
     # Note -- url_name isn't in this list because it's handled specially on
     # import and export.
 
-    # TODO (vshnayder): Do we need a list of metadata we actually
-    # understand?  And if we do, is this the place?
-    # Related: What's the right behavior for clean_metadata?
-    metadata_attributes = ('format', 'graceperiod', 'showanswer', 'rerandomize',
-                           'start', 'due', 'graded', 'display_name', 'url_name', 'hide_from_toc',
-                           'ispublic',  # if True, then course is listed for all users; see
-                           'xqa_key',  # for xqaa server access
-                           'giturl',  # url of git server for origin of file
-                           # information about testcenter exams is a dict (of dicts), not a string,
-                           # so it cannot be easily exportable as a course element's attribute.
-                           'testcenter_info',
-                           # VS[compat] Remove once unused.
-                           'name', 'slug')
-
     metadata_to_strip = ('data_dir',
-                         'tabs', 'grading_policy', 'published_by', 'published_date',
-                         'discussion_blackouts', 'testcenter_info',
+                         'tabs', 'grading_policy',
+                         'discussion_blackouts',
                          # VS[compat] -- remove the below attrs once everything is in the CMS
                          'course', 'org', 'url_name', 'filename',
                          # Used for storing xml attributes between import and export, for roundtrips
                          'xml_attributes')
 
-    metadata_to_export_to_policy = ('discussion_topics')
+    metadata_to_export_to_policy = ('discussion_topics',)
 
-    @classmethod
-    def get_map_for_field(cls, attr):
-        for field in set(cls.fields + cls.lms.fields):
-            if field.name == attr:
-                from_xml = lambda val: deserialize_field(field, val)
-                to_xml = lambda val: serialize_field(val)
-                return AttrMap(from_xml, to_xml)
-
-        return AttrMap()
+    @staticmethod
+    def _get_metadata_from_xml(xml_object, remove=True):
+        """
+        Extract the metadata from the XML.
+        """
+        meta = xml_object.find('meta')
+        if meta is None:
+            return ''
+        dmdata = meta.text
+        if remove:
+            xml_object.remove(meta)
+        return dmdata
 
     @classmethod
     def definition_from_xml(cls, xml_object, system):
@@ -183,18 +162,17 @@ class XmlDescriptor(XModuleDescriptor):
 
         xml_object: An etree Element
         """
-        raise NotImplementedError(
-            "%s does not implement definition_from_xml" % cls.__name__)
+        raise NotImplementedError("%s does not implement definition_from_xml" % cls.__name__)
 
     @classmethod
     def clean_metadata_from_xml(cls, xml_object):
         """
-        Remove any attribute named in cls.metadata_attributes from the supplied
+        Remove any attribute named for a field with scope Scope.settings from the supplied
         xml_object
         """
-        for attr in cls.metadata_attributes:
-            if xml_object.get(attr) is not None:
-                del xml_object.attrib[attr]
+        for field_name, field in cls.fields.items():
+            if field.scope == Scope.settings and xml_object.get(field_name) is not None:
+                del xml_object.attrib[field_name]
 
     @classmethod
     def file_to_xml(cls, file_object):
@@ -204,30 +182,38 @@ class XmlDescriptor(XModuleDescriptor):
 
         Returns an lxml Element
         """
-        return etree.parse(file_object, parser=edx_xml_parser).getroot()
+        return etree.parse(file_object, parser=EDX_XML_PARSER).getroot()
 
     @classmethod
-    def load_file(cls, filepath, fs, location):
-        '''
+    def load_file(cls, filepath, fs, def_id):  # pylint: disable=invalid-name
+        """
         Open the specified file in fs, and call cls.file_to_xml on it,
         returning the lxml object.
 
         Add details and reraise on error.
-        '''
+        """
         try:
-            with fs.open(filepath) as file:
-                return cls.file_to_xml(file)
+            with fs.open(filepath) as xml_file:
+                return cls.file_to_xml(xml_file)
         except Exception as err:
             # Add info about where we are, but keep the traceback
             msg = 'Unable to load file contents at path %s for item %s: %s ' % (
-                filepath, location.url(), str(err))
+                filepath, def_id, err)
             raise Exception, msg, sys.exc_info()[2]
 
     @classmethod
-    def load_definition(cls, xml_object, system, location):
-        '''Load a descriptor definition from the specified xml_object.
+    def load_definition(cls, xml_object, system, def_id, id_generator):
+        """
+        Load a descriptor definition from the specified xml_object.
         Subclasses should not need to override this except in special
-        cases (e.g. html module)'''
+        cases (e.g. html module)
+
+        Args:
+            xml_object: an lxml.etree._Element containing the definition to load
+            system: the modulestore system (aka, runtime) which accesses data and provides access to services
+            def_id: the definition id for the block--used to compute the usage id and asides ids
+            id_generator: used to generate the usage_id
+        """
 
         # VS[compat] -- the filename attr should go away once everything is
         # converted.  (note: make sure html files still work once this goes away)
@@ -235,7 +221,13 @@ class XmlDescriptor(XModuleDescriptor):
         if filename is None:
             definition_xml = copy.deepcopy(xml_object)
             filepath = ''
+            aside_children = []
         else:
+            dog_stats_api.increment(
+                DEPRECATION_VSCOMPAT_EVENT,
+                tags=["location:xmlparser_util_mixin_load_definition_filename"]
+            )
+
             filepath = cls._format_filepath(xml_object.tag, filename)
 
             # VS[compat]
@@ -243,22 +235,34 @@ class XmlDescriptor(XModuleDescriptor):
             # give the class a chance to fix it up. The file will be written out
             # again in the correct format.  This should go away once the CMS is
             # online and has imported all current (fall 2012) courses from xml
-            if not system.resources_fs.exists(filepath) and hasattr(
-                    cls, 'backcompat_paths'):
+            if not system.resources_fs.exists(filepath) and hasattr(cls, 'backcompat_paths'):
+                dog_stats_api.increment(
+                    DEPRECATION_VSCOMPAT_EVENT,
+                    tags=["location:xmlparser_util_mixin_load_definition_backcompat"]
+                )
+
                 candidates = cls.backcompat_paths(filepath)
                 for candidate in candidates:
                     if system.resources_fs.exists(candidate):
                         filepath = candidate
                         break
 
-            definition_xml = cls.load_file(filepath, system.resources_fs, location)
+            definition_xml = cls.load_file(filepath, system.resources_fs, def_id)
+            usage_id = id_generator.create_usage(def_id)
+            aside_children = system.parse_asides(definition_xml, def_id, usage_id, id_generator)
 
-        definition_metadata = get_metadata_from_xml(definition_xml)
+            # Add the attributes from the pointer node
+            definition_xml.attrib.update(xml_object.attrib)
+
+        definition_metadata = cls._get_metadata_from_xml(definition_xml)
         cls.clean_metadata_from_xml(definition_xml)
         definition, children = cls.definition_from_xml(definition_xml, system)
         if definition_metadata:
             definition['definition_metadata'] = definition_metadata
         definition['filename'] = [filepath, filename]
+
+        if aside_children:
+            definition['aside_children'] = aside_children
 
         return definition, children
 
@@ -269,19 +273,27 @@ class XmlDescriptor(XModuleDescriptor):
 
         Returns a dictionary {key: value}.
         """
-        metadata = {}
-        for attr in xml_object.attrib:
-            val = xml_object.get(attr)
-            if val is not None:
-                # VS[compat].  Remove after all key translations done
-                attr = cls._translate(attr)
+        metadata = {'xml_attributes': {}}
+        for attr, val in xml_object.attrib.iteritems():
+            # VS[compat].  Remove after all key translations done
+            attr = cls._translate(attr)
 
-                if attr in cls.metadata_to_strip:
-                    # don't load these
-                    continue
+            if attr in cls.metadata_to_strip:
+                if attr in ('course', 'org', 'url_name', 'filename'):
+                    dog_stats_api.increment(
+                        DEPRECATION_VSCOMPAT_EVENT,
+                        tags=(
+                            "location:xmlparser_util_mixin_load_metadata",
+                            "metadata:{}".format(attr),
+                        )
+                    )
+                # don't load these
+                continue
 
-                attr_map = cls.get_map_for_field(attr)
-                metadata[attr] = attr_map.from_xml(val)
+            if attr not in cls.fields:
+                metadata['xml_attributes'][attr] = val
+            else:
+                metadata[attr] = deserialize_field(cls.fields[attr], val)
         return metadata
 
     @classmethod
@@ -290,41 +302,61 @@ class XmlDescriptor(XModuleDescriptor):
         Add the keys in policy to metadata, after processing them
         through the attrmap.  Updates the metadata dict in place.
         """
-        for attr in policy:
-            attr_map = cls.get_map_for_field(attr)
-            metadata[cls._translate(attr)] = attr_map.from_xml(policy[attr])
+        for attr, value in policy.iteritems():
+            attr = cls._translate(attr)
+            if attr not in cls.fields:
+                # Store unknown attributes coming from policy.json
+                # in such a way that they will export to xml unchanged
+                metadata['xml_attributes'][attr] = value
+            else:
+                metadata[attr] = value
 
     @classmethod
-    def from_xml(cls, xml_data, system, org=None, course=None):
+    def parse_xml(cls, node, runtime, keys, id_generator):  # pylint: disable=unused-argument
         """
-        Creates an instance of this descriptor from the supplied xml_data.
-        This may be overridden by subclasses
+        Use `node` to construct a new block.
 
-        xml_data: A string of xml that will be translated into data and children for
-            this module
-        system: A DescriptorSystem for interacting with external resources
-        org and course are optional strings that will be used in the generated modules
-            url identifiers
+        Arguments:
+            node (etree.Element): The xml node to parse into an xblock.
+
+            runtime (:class:`.Runtime`): The runtime to use while parsing.
+
+            keys (:class:`.ScopeIds`): The keys identifying where this block
+                will store its data.
+
+            id_generator (:class:`.IdGenerator`): An object that will allow the
+                runtime to generate correct definition and usage ids for
+                children of this block.
+
+        Returns (XBlock): The newly parsed XBlock
+
         """
-        xml_object = etree.fromstring(xml_data)
         # VS[compat] -- just have the url_name lookup, once translation is done
-        url_name = xml_object.get('url_name', xml_object.get('slug'))
-        location = Location('i4x', org, course, xml_object.tag, url_name)
+        url_name = cls._get_url_name(node)
+        def_id = id_generator.create_definition(node.tag, url_name)
+        usage_id = id_generator.create_usage(def_id)
+        aside_children = []
 
         # VS[compat] -- detect new-style each-in-a-file mode
-        if is_pointer_tag(xml_object):
+        if is_pointer_tag(node):
             # new style:
             # read the actual definition file--named using url_name.replace(':','/')
-            filepath = cls._format_filepath(xml_object.tag, name_to_pathname(url_name))
-            definition_xml = cls.load_file(filepath, system.resources_fs, location)
+            definition_xml, filepath = cls.load_definition_xml(node, runtime, def_id)
+            aside_children = runtime.parse_asides(definition_xml, def_id, usage_id, id_generator)
         else:
-            definition_xml = xml_object  # this is just a pointer, not the real definition content
+            filepath = None
+            definition_xml = node
+            dog_stats_api.increment(
+                DEPRECATION_VSCOMPAT_EVENT,
+                tags=["location:xmlparser_util_mixin_parse_xml"]
+            )
 
-        definition, children = cls.load_definition(definition_xml, system, location)  # note this removes metadata
+        # Note: removes metadata.
+        definition, children = cls.load_definition(definition_xml, runtime, def_id, id_generator)
 
         # VS[compat] -- make Ike's github preview links work in both old and
         # new file layouts
-        if is_pointer_tag(xml_object):
+        if is_pointer_tag(node):
             # new style -- contents actually at filepath
             definition['filename'] = [filepath, filepath]
 
@@ -337,31 +369,57 @@ class XmlDescriptor(XModuleDescriptor):
             try:
                 metadata.update(json.loads(dmdata))
             except Exception as err:
-                log.debug('Error %s in loading metadata %s' % (err, dmdata))
+                log.debug('Error in loading metadata %r', dmdata, exc_info=True)
                 metadata['definition_metadata_err'] = str(err)
 
+        definition_aside_children = definition.pop('aside_children', None)
+        if definition_aside_children:
+            aside_children.extend(definition_aside_children)
+
         # Set/override any metadata specified by policy
-        k = policy_key(location)
-        if k in system.policy:
-            cls.apply_policy(metadata, system.policy[k])
+        cls.apply_policy(metadata, runtime.get_policy(usage_id))
 
-        model_data = {}
-        model_data.update(metadata)
-        model_data.update(definition)
-        model_data['children'] = children
+        field_data = {}
+        field_data.update(metadata)
+        field_data.update(definition)
+        field_data['children'] = children
 
-        model_data['xml_attributes'] = {}
-        model_data['xml_attributes']['filename'] = definition.get('filename', ['', None])  # for git link
-        for key, value in metadata.items():
-            if key not in set(f.name for f in cls.fields + cls.lms.fields):
-                model_data['xml_attributes'][key] = value
-        model_data['location'] = location
-        model_data['category'] = xml_object.tag
+        field_data['xml_attributes']['filename'] = definition.get('filename', ['', None])  # for git link
+        kvs = InheritanceKeyValueStore(initial_values=field_data)
+        field_data = KvsFieldData(kvs)
 
-        return cls(
-            system,
-            model_data,
+        xblock = runtime.construct_xblock_from_class(
+            cls,
+            # We're loading a descriptor, so student_id is meaningless
+            ScopeIds(None, node.tag, def_id, usage_id),
+            field_data,
         )
+
+        if aside_children:
+            asides_tags = [x.tag for x in aside_children]
+            asides = runtime.get_asides(xblock)
+            for asd in asides:
+                if asd.scope_ids.block_type in asides_tags:
+                    xblock.add_aside(asd)
+
+        return xblock
+
+    @classmethod
+    def _get_url_name(cls, node):
+        """
+        Reads url_name attribute from the node
+        """
+        return node.get('url_name', node.get('slug'))
+
+    @classmethod
+    def load_definition_xml(cls, node, runtime, def_id):
+        """
+        Loads definition_xml stored in a dedicated file
+        """
+        url_name = cls._get_url_name(node)
+        filepath = cls._format_filepath(node.tag, name_to_pathname(url_name))
+        definition_xml = cls.load_file(filepath, runtime.resources_fs, def_id)
+        return definition_xml, filepath
 
     @classmethod
     def _format_filepath(cls, category, name):
@@ -378,73 +436,64 @@ class XmlDescriptor(XModuleDescriptor):
         """
         return True
 
-    def export_to_xml(self, resource_fs):
+    def add_xml_to_node(self, node):
         """
-        Returns an xml string representing this module, and all modules
-        underneath it.  May also write required resources out to resource_fs
-
-        Assumes that modules have single parentage (that no module appears twice
-        in the same course), and that it is thus safe to nest modules as xml
-        children as appropriate.
-
-        The returned XML should be able to be parsed back into an identical
-        XModuleDescriptor using the from_xml method with the same system, org,
-        and course
-
-        resource_fs is a pyfilesystem object (from the fs package)
+        For exporting, set data on `node` from ourselves.
         """
-
         # Get the definition
-        xml_object = self.definition_to_xml(resource_fs)
-        self.__class__.clean_metadata_from_xml(xml_object)
+        xml_object = self.definition_to_xml(self.runtime.export_fs)
+        for aside in self.runtime.get_asides(self):
+            if aside.needs_serialization():
+                aside_node = etree.Element("unknown_root", nsmap=XML_NAMESPACES)
+                aside.add_xml_to_node(aside_node)
+                xml_object.append(aside_node)
 
-        # Set the tag so we get the file path right
+        self.clean_metadata_from_xml(xml_object)
+
+        # Set the tag on both nodes so we get the file path right.
         xml_object.tag = self.category
-
-        def val_for_xml(attr):
-            """Get the value for this attribute that we want to store.
-            (Possible format conversion through an AttrMap).
-             """
-            attr_map = self.get_map_for_field(attr)
-            return attr_map.to_xml(self._model_data[attr])
+        node.tag = self.category
 
         # Add the non-inherited metadata
         for attr in sorted(own_metadata(self)):
             # don't want e.g. data_dir
             if attr not in self.metadata_to_strip and attr not in self.metadata_to_export_to_policy:
-                val = val_for_xml(attr)
+                val = serialize_field(self._field_data.get(self, attr))
                 try:
                     xml_object.set(attr, val)
-                except Exception, e:
-                    logging.exception('Failed to serialize metadata attribute {0} with value {1}. This could mean data loss!!!  Exception: {2}'.format(attr, val, e))
-                    pass
+                except Exception:
+                    logging.exception(
+                        u'Failed to serialize metadata attribute %s with value %s in module %s. This could mean data loss!!!',
+                        attr, val, self.url_name
+                    )
 
         for key, value in self.xml_attributes.items():
             if key not in self.metadata_to_strip:
-                xml_object.set(key, value)
+                xml_object.set(key, serialize_field(value))
 
         if self.export_to_file():
             # Write the definition to a file
             url_path = name_to_pathname(self.url_name)
-            filepath = self.__class__._format_filepath(self.category, url_path)
-            resource_fs.makedir(os.path.dirname(filepath), recursive=True, allow_recreate=True)
-            with resource_fs.open(filepath, 'w') as file:
-                file.write(etree.tostring(xml_object, pretty_print=True, encoding='utf-8'))
-
-            # And return just a pointer with the category and filename.
-            record_object = etree.Element(self.category)
+            filepath = self._format_filepath(self.category, url_path)
+            self.runtime.export_fs.makedir(os.path.dirname(filepath), recursive=True, allow_recreate=True)
+            with self.runtime.export_fs.open(filepath, 'w') as fileobj:
+                ElementTree(xml_object).write(fileobj, pretty_print=True, encoding='utf-8')
         else:
-            record_object = xml_object
+            # Write all attributes from xml_object onto node
+            node.clear()
+            node.tag = xml_object.tag
+            node.text = xml_object.text
+            node.tail = xml_object.tail
+            node.attrib.update(xml_object.attrib)
+            node.extend(xml_object)
 
-        record_object.set('url_name', self.url_name)
+        node.set('url_name', self.url_name)
 
         # Special case for course pointers:
         if self.category == 'course':
             # add org and course attributes on the pointer tag
-            record_object.set('org', self.location.org)
-            record_object.set('course', self.location.course)
-
-        return etree.tostring(record_object, pretty_print=True, encoding='utf-8')
+            node.set('org', self.location.org)
+            node.set('course', self.location.course)
 
     def definition_to_xml(self, resource_fs):
         """
@@ -455,6 +504,88 @@ class XmlDescriptor(XModuleDescriptor):
 
     @property
     def non_editable_metadata_fields(self):
-        non_editable_fields = super(XmlDescriptor, self).non_editable_metadata_fields
-        non_editable_fields.append(XmlDescriptor.xml_attributes)
+        """
+        Return a list of all metadata fields that cannot be edited.
+        """
+        non_editable_fields = super(XmlParserMixin, self).non_editable_metadata_fields
+        non_editable_fields.append(XmlParserMixin.xml_attributes)
         return non_editable_fields
+
+
+class XmlDescriptor(XmlParserMixin, XModuleDescriptor):  # pylint: disable=abstract-method
+    """
+    Mixin class for standardized parsing of XModule xml.
+    """
+    resources_dir = None
+
+    @classmethod
+    def from_xml(cls, xml_data, system, id_generator):
+        """
+        Creates an instance of this descriptor from the supplied xml_data.
+        This may be overridden by subclasses.
+
+        Args:
+            xml_data (str): A string of xml that will be translated into data and children
+                for this module
+
+            system (:class:`.XMLParsingSystem):
+
+            id_generator (:class:`xblock.runtime.IdGenerator`): Used to generate the
+                usage_ids and definition_ids when loading this xml
+
+        """
+        # Shim from from_xml to the parse_xml defined in XmlParserMixin.
+        # This only exists to satisfy subclasses that both:
+        #    a) define from_xml themselves
+        #    b) call super(..).from_xml(..)
+        return super(XmlDescriptor, cls).parse_xml(
+            etree.fromstring(xml_data),
+            system,
+            None,  # This is ignored by XmlParserMixin
+            id_generator,
+        )
+
+    @classmethod
+    def parse_xml(cls, node, runtime, keys, id_generator):
+        """
+        Interpret the parsed XML in `node`, creating an XModuleDescriptor.
+        """
+        if cls.from_xml != XmlDescriptor.from_xml:
+            # Skip the parse_xml from XmlParserMixin to get the shim parse_xml
+            # from XModuleDescriptor, which actually calls `from_xml`.
+            return super(XmlParserMixin, cls).parse_xml(node, runtime, keys, id_generator)  # pylint: disable=bad-super-call
+        else:
+            return super(XmlDescriptor, cls).parse_xml(node, runtime, keys, id_generator)
+
+    def export_to_xml(self, resource_fs):
+        """
+        Returns an xml string representing this module, and all modules
+        underneath it.  May also write required resources out to resource_fs.
+
+        Assumes that modules have single parentage (that no module appears twice
+        in the same course), and that it is thus safe to nest modules as xml
+        children as appropriate.
+
+        The returned XML should be able to be parsed back into an identical
+        XModuleDescriptor using the from_xml method with the same system, org,
+        and course
+        """
+        # Shim from export_to_xml to the add_xml_to_node defined in XmlParserMixin.
+        # This only exists to satisfy subclasses that both:
+        #    a) define export_to_xml themselves
+        #    b) call super(..).export_to_xml(..)
+        node = Element(self.category)
+        super(XmlDescriptor, self).add_xml_to_node(node)
+        return etree.tostring(node)
+
+    def add_xml_to_node(self, node):
+        """
+        Export this :class:`XModuleDescriptor` as XML, by setting attributes on the provided
+        `node`.
+        """
+        if self.export_to_xml != XmlDescriptor.export_to_xml:
+            # Skip the add_xml_to_node from XmlParserMixin to get the shim add_xml_to_node
+            # from XModuleDescriptor, which actually calls `export_to_xml`.
+            super(XmlParserMixin, self).add_xml_to_node(node)  # pylint: disable=bad-super-call
+        else:
+            super(XmlDescriptor, self).add_xml_to_node(node)

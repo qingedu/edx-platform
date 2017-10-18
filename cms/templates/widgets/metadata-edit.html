@@ -5,27 +5,23 @@
   import hashlib
   import copy
   import json
-  hlskey = hashlib.md5(module.location.url()).hexdigest()
+  from xmodule.modulestore import EdxJSONEncoder
+  hlskey = hashlib.md5(module.location.to_deprecated_string().encode('utf-8')).hexdigest()
 %>
 
 ## js templates
-<script id="metadata-editor-tpl" type="text/template">
-    <%static:include path="js/metadata-editor.underscore" />
-</script>
+% for template_name in ["metadata-editor", "license-selector"]:
+    <script id="${template_name}-tpl" type="text/template">
+        <%static:include path="js/${template_name}.underscore" />
+    </script>
+% endfor
+% for template_name in ["metadata-number-entry", "metadata-string-entry", "metadata-option-entry", "metadata-list-entry", "metadata-dict-entry", "metadata-file-uploader-entry", "metadata-file-uploader-item"]:
+    <script id="${template_name}" type="text/template">
+        <%static:include path="js/${template_name}.underscore" />
+    </script>
+% endfor
 
-<script id="metadata-number-entry" type="text/template">
-    <%static:include path="js/metadata-number-entry.underscore" />
-</script>
-
-<script id="metadata-string-entry" type="text/template">
-    <%static:include path="js/metadata-string-entry.underscore" />
-</script>
-
-<script id="metadata-option-entry" type="text/template">
-    <%static:include path="js/metadata-option-entry.underscore" />
-</script>
-
-<% showHighLevelSource='source_code' in editable_metadata_fields and editable_metadata_fields['source_code']['explicitly_set'] %>
+<% showHighLevelSource='source_code' in editable_metadata_fields and editable_metadata_fields['source_code']['explicitly_set'] and enable_latex_compiler %>
 <% metadata_field_copy = copy.copy(editable_metadata_fields) %>
 ## Delete 'source_code' field (if it exists) so metadata editor view does not attempt to render it.
 % if 'source_code' in editable_metadata_fields:
@@ -40,4 +36,4 @@
     <%include file="source-edit.html" />
 % endif
 
-<div class="wrapper-comp-settings metadata_edit" id="settings-tab" data-metadata='${json.dumps(metadata_field_copy) | h}'/>
+<div class="wrapper-comp-settings metadata_edit" id="settings-tab" data-metadata='${json.dumps(metadata_field_copy, cls=EdxJSONEncoder) | h}'/>

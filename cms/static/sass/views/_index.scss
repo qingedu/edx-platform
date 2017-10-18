@@ -1,16 +1,15 @@
 // studio - views - how it works
 // ====================
 
-body.index {
-
+.view-howitworks {
   &.not-signedin {
-
     .wrapper-header {
       margin-bottom: 0;
     }
 
     .wrapper-content-header, .wrapper-content-features, .wrapper-content-cta {
       @include box-sizing(border-box);
+
       margin: 0;
       padding: 0 $baseline;
       position: relative;
@@ -18,8 +17,10 @@ body.index {
     }
 
     .content {
-      @extend .t-copy-base;
+      @extend %t-copy-base;
+
       @include clearfix();
+
       max-width: $fg-max-width;
       min-width: $fg-min-width;
       width: flex-grid(12);
@@ -51,7 +52,8 @@ body.index {
 
     // welcome content
     .wrapper-content-header {
-      @include linear-gradient($blue-l1,$blue,$blue-d1);
+      @include linear-gradient($blue-l1, $blue, $blue-d1);
+
       padding-bottom: ($baseline*4);
       padding-top: ($baseline*4);
     }
@@ -62,21 +64,29 @@ body.index {
       color: $white;
 
       h1 {
-        @extend .t-title2;
+        @extend %t-title2;
+        @extend %t-strong;
+
         float: none;
         margin: 0 0 ($baseline/2) 0;
         border-bottom: 1px solid $blue-l1;
         padding: 0;
-        font-weight: 500;
         color: $white;
       }
 
+      .wrapper-text-welcome, .logo {
+        display: inline-block;
+      }
+
       .logo {
-        font-weight: 600;
+        @extend %t-strong;
+
+        margin-left: ($baseline/2);
       }
 
       .tagline {
-        @extend .t-title4;
+        @extend %t-title4;
+
         margin: 0;
         color: $blue-l3;
       }
@@ -84,10 +94,11 @@ body.index {
 
     .arrow_box {
       position: relative;
-      background: #fff;
-      border: 4px solid #000;
+      background: $white;
+      border: 4px solid $black;
     }
-    .arrow_box:after, .arrow_box:before {
+
+    .arrow_box::after, .arrow_box::before {
       top: 100%;
       border: solid transparent;
       content: " ";
@@ -97,16 +108,17 @@ body.index {
       pointer-events: none;
     }
 
-    .arrow_box:after {
+    .arrow_box::after {
       border-color: rgba(255, 255, 255, 0);
-      border-top-color: #fff;
+      border-top-color: $white;
       border-width: 30px;
       left: 50%;
-      margin-left: -30px;
+      margin-left: -($baseline*1.5);
     }
-    .arrow_box:before {
-      border-color: rgba(0, 0, 0, 0);
-      border-top-color: #000;
+
+    .arrow_box::before {
+      border-color: $transparent;
+      border-top-color: $black;
       border-width: 36px;
       left: 50%;
       margin-left: -36px;
@@ -121,7 +133,6 @@ body.index {
     }
 
     .content-features {
-
       .list-features {
 
       }
@@ -129,18 +140,21 @@ body.index {
       // indiv features
       .feature {
         @include clearfix();
+
         margin: 0 0 ($baseline*2) 0;
         border-bottom: 1px solid $gray-l4;
         padding: 0 0 ($baseline*2) 0;
 
         .img {
           @include box-sizing(border-box);
+
           float: left;
           width: flex-grid(3, 12);
           margin-right: flex-gutter();
 
           a {
             @include box-sizing(border-box);
+
             box-shadow: 0 1px ($baseline/10) $shadow-l1;
             position: relative;
             top: 0;
@@ -152,14 +166,17 @@ body.index {
 
             .action-zoom {
               @include transition(bottom $tmg-f2 ease-in-out 0s);
+
               position: absolute;
               bottom: -30px;
               right: ($baseline/2);
-              opacity: 0.0;
+              opacity: 0;
 
-              [class^="icon-"] {
-                @include font-size(18);
+              .icon {
                 @include border-top-radius(3px);
+
+                @extend %t-icon4;
+
                 display: inline-block;
                 padding: ($baseline/2);
                 background: $blue;
@@ -172,7 +189,7 @@ body.index {
               border-color: $blue;
 
               .action-zoom {
-                opacity: 1.0;
+                opacity: 1;
                 bottom: -2px;
               }
             }
@@ -191,30 +208,36 @@ body.index {
           margin-top: -($baseline/4);
 
           h3 {
-            @extend .t-title4;
+            @extend %t-title4;
+            @extend %t-strong;
+
             margin: 0 0 ($baseline/2) 0;
-            font-weight: 600;
           }
 
           > p {
-            @extend .t-copy-lead1;
+            @extend %t-copy-lead1;
+
             color: $gray-d1;
           }
 
           strong {
+            @extend %t-strong;
+
             color: $gray-d2;
-            font-weight: 500;
           }
 
           .list-proofpoints {
-            @extend .t-copy-sub1;
+            @extend %t-copy-sub1;
+
             @include clearfix();
+
             width: flex-grid(9, 9);
             margin: ($baseline*1.5) 0 0 0;
 
             .proofpoint {
               @include box-sizing(border-box);
               @include transition(all $tmg-f2 ease-in-out 0s);
+
               border-radius: ($baseline/4);
               position: relative;
               top: 0;
@@ -223,23 +246,25 @@ body.index {
               min-height: ($baseline*8);
               margin-right: flex-gutter();
               padding: ($baseline*0.75) $baseline;
-              color: $gray-l1;
+              color: $gray-d1;
 
               .title {
-                @extend .t-copy-base;
+                @extend %t-copy-base;
+                @extend %t-strong;
+
                 margin: 0 0 ($baseline/4) 0;
-                font-weight: 500;
                 color: $gray-d3;
               }
 
               &:hover {
-                @extend .fake-link;
+                @extend %ui-fake-link;
+
                 box-shadow: 0 1px ($baseline/10) $shadow-l1;
                 background: $blue-l5;
                 top: -($baseline/5);
 
                 .title {
-                  color: $blue;
+                  color: $blue-d2;
                 }
               }
 
@@ -258,7 +283,6 @@ body.index {
         }
 
         &:nth-child(even) {
-
           .img {
             float: right;
             margin-right: 0;
@@ -271,7 +295,6 @@ body.index {
           }
 
           .list-proofpoints {
-
             .proofpoint {
               float: right;
               width: flex-grid(3, 9);
@@ -318,16 +341,19 @@ body.index {
           text-align: center;
 
           &.action-primary {
-            @extend .t-action1;
             @include blue-button;
+
+            @extend %t-action1;
+            @extend %t-strong;
+
             padding: ($baseline*0.75) ($baseline/2);
-            font-weight: 600;
             text-align: center;
             text-transform: uppercase;
           }
 
           &.action-secondary {
-            @extend .t-action3;
+            @extend %t-action3;
+
             margin-top: ($baseline/2);
           }
         }

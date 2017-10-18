@@ -1,6 +1,9 @@
 """Module progress tests"""
 
 import unittest
+from mock import Mock
+
+from xblock.field_data import DictFieldData
 
 from xmodule.progress import Progress
 from xmodule import x_module
@@ -20,12 +23,12 @@ class ProgressTest(unittest.TestCase):
 
     def test_create_object(self):
         # These should work:
-        p = Progress(0, 2)
-        p = Progress(1, 2)
-        p = Progress(2, 2)
+        prg1 = Progress(0, 2)  # pylint: disable=unused-variable
+        prg2 = Progress(1, 2)  # pylint: disable=unused-variable
+        prg3 = Progress(2, 2)  # pylint: disable=unused-variable
 
-        p = Progress(2.5, 5.0)
-        p = Progress(3.7, 12.3333)
+        prg4 = Progress(2.5, 5.0)  # pylint: disable=unused-variable
+        prg5 = Progress(3.7, 12.3333)  # pylint: disable=unused-variable
 
         # These shouldn't
         self.assertRaises(ValueError, Progress, 0, 0)
@@ -41,10 +44,10 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual((0, 2), Progress(-2, 2).frac())
 
     def test_frac(self):
-        p = Progress(1, 2)
-        (a, b) = p.frac()
-        self.assertEqual(a, 1)
-        self.assertEqual(b, 2)
+        prg = Progress(1, 2)
+        (a_mem, b_mem) = prg.frac()
+        self.assertEqual(a_mem, 1)
+        self.assertEqual(b_mem, 2)
 
     def test_percent(self):
         self.assertEqual(self.not_started.percent(), 0)
@@ -78,55 +81,37 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(str(self.not_started), "0/17")
         self.assertEqual(str(self.part_done), "2/6")
         self.assertEqual(str(self.done), "7/7")
-
-    def test_ternary_str(self):
-        self.assertEqual(self.not_started.ternary_str(), "none")
-        self.assertEqual(self.half_done.ternary_str(), "in_progress")
-        self.assertEqual(self.done.ternary_str(), "done")
-
-    def test_to_js_status(self):
-        '''Test the Progress.to_js_status_str() method'''
-
-        self.assertEqual(Progress.to_js_status_str(self.not_started), "none")
-        self.assertEqual(Progress.to_js_status_str(self.half_done), "in_progress")
-        self.assertEqual(Progress.to_js_status_str(self.done), "done")
-        self.assertEqual(Progress.to_js_status_str(None), "NA")
-
-    def test_to_js_detail_str(self):
-        '''Test the Progress.to_js_detail_str() method'''
-        f = Progress.to_js_detail_str
-        for p in (self.not_started, self.half_done, self.done):
-            self.assertEqual(f(p), str(p))
-        # But None should be encoded as NA
-        self.assertEqual(f(None), "NA")
+        self.assertEqual(str(Progress(2.1234, 7)), '2.12/7')
+        self.assertEqual(str(Progress(2.0034, 7)), '2/7')
+        self.assertEqual(str(Progress(0.999, 7)), '1/7')
 
     def test_add(self):
         '''Test the Progress.add_counts() method'''
-        p = Progress(0, 2)
-        p2 = Progress(1, 3)
-        p3 = Progress(2, 5)
-        pNone = None
+        prg1 = Progress(0, 2)
+        prg2 = Progress(1, 3)
+        prg3 = Progress(2, 5)
+        prg_none = None
         add = lambda a, b: Progress.add_counts(a, b).frac()
 
-        self.assertEqual(add(p, p), (0, 4))
-        self.assertEqual(add(p, p2), (1, 5))
-        self.assertEqual(add(p2, p3), (3, 8))
+        self.assertEqual(add(prg1, prg1), (0, 4))
+        self.assertEqual(add(prg1, prg2), (1, 5))
+        self.assertEqual(add(prg2, prg3), (3, 8))
 
-        self.assertEqual(add(p2, pNone), p2.frac())
-        self.assertEqual(add(pNone, p2), p2.frac())
+        self.assertEqual(add(prg2, prg_none), prg2.frac())
+        self.assertEqual(add(prg_none, prg2), prg2.frac())
 
     def test_equality(self):
         '''Test that comparing Progress objects for equality
         works correctly.'''
-        p = Progress(1, 2)
-        p2 = Progress(2, 4)
-        p3 = Progress(1, 2)
-        self.assertTrue(p == p3)
-        self.assertFalse(p == p2)
+        prg1 = Progress(1, 2)
+        prg2 = Progress(2, 4)
+        prg3 = Progress(1, 2)
+        self.assertEqual(prg1, prg3)
+        self.assertNotEqual(prg1, prg2)
 
         # Check != while we're at it
-        self.assertTrue(p != p2)
-        self.assertFalse(p != p3)
+        self.assertNotEqual(prg1, prg2)
+        self.assertEqual(prg1, prg3)
 
 
 class ModuleProgressTest(unittest.TestCase):
@@ -134,6 +119,6 @@ class ModuleProgressTest(unittest.TestCase):
     '''
     def test_xmodule_default(self):
         '''Make sure default get_progress exists, returns None'''
-        xm = x_module.XModule(get_test_system(), None, {'location': 'a://b/c/d/e'})
-        p = xm.get_progress()
-        self.assertEqual(p, None)
+        xmod = x_module.XModule(Mock(), get_test_system(), DictFieldData({'location': 'a://b/c/d/e'}), Mock())
+        prg = xmod.get_progress()
+        self.assertEqual(prg, None)

@@ -1,152 +1,180 @@
+"""
+URLs for LMS
+"""
+
+from config_models.views import ConfigurationModelCurrentAPIView
 from django.conf import settings
-from django.conf.urls import patterns, include, url
-from django.contrib import admin
+from django.conf.urls import include, patterns, url
 from django.conf.urls.static import static
+from django.contrib.admin import autodiscover as django_autodiscover
+from django.utils.translation import ugettext_lazy as _
+from django.views.generic.base import RedirectView
+from ratelimitbackend import admin
 
-# Not used, the work is done in the imported module.
-from . import one_time_startup      # pylint: disable=W0611
+from courseware.views.index import CoursewareIndex
+from courseware.views.views import CourseTabView, EnrollStaffView, StaticCourseTabView
+from django_comment_common.models import ForumsConfig
+from openedx.core.djangoapps.auth_exchange.views import LoginWithAccessTokenView
+from openedx.core.djangoapps.catalog.models import CatalogIntegration
+from openedx.core.djangoapps.programs.models import ProgramsApiConfig
+from openedx.core.djangoapps.self_paced.models import SelfPacedConfiguration
+from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
+from openedx.features.enterprise_support.api import enterprise_enabled
 
-import django.contrib.auth.views
 
-# Uncomment the next two lines to enable the admin:
-if settings.DEBUG or settings.MITX_FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
-    admin.autodiscover()
+if settings.DEBUG or settings.FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
+    django_autodiscover()
+    admin.site.site_header = _('LMS Administration')
+    admin.site.site_title = admin.site.site_header
 
-urlpatterns = ('',  # nopep8
-    # certificate view
 
-    url(r'^update_certificate$', 'certificates.views.update_certificate'),
+# Use urlpatterns formatted as within the Django docs with first parameter "stuck" to the open parenthesis
+urlpatterns = (
+    '',
+
     url(r'^$', 'branding.views.index', name="root"),   # Main marketing page, or redirect to courseware
+
+    url(r'', include('student.urls')),
+    # TODO: Move lms specific student views out of common code
     url(r'^dashboard$', 'student.views.dashboard', name="dashboard"),
-    url(r'^login$', 'student.views.signin_user', name="signin_user"),
-    url(r'^register$', 'student.views.register_user', name="register_user"),
+    url(r'^change_enrollment$', 'student.views.change_enrollment', name='change_enrollment'),
 
-    url(r'^admin_dashboard$', 'dashboard.views.dashboard'),
+    # Event tracking endpoints
+    url(r'', include('track.urls')),
 
-    url(r'^change_email$', 'student.views.change_email_request', name="change_email"),
-    url(r'^email_confirm/(?P<key>[^/]*)$', 'student.views.confirm_email_change'),
-    url(r'^change_name$', 'student.views.change_name_request', name="change_name"),
-    url(r'^accept_name_change$', 'student.views.accept_name_change'),
-    url(r'^reject_name_change$', 'student.views.reject_name_change'),
-    url(r'^pending_name_changes$', 'student.views.pending_name_changes'),
-    url(r'^event$', 'track.views.user_track'),
-    url(r'^t/(?P<template>[^/]*)$', 'static_template_view.views.index'),   # TODO: Is this used anymore? What is STATIC_GRAB?
+    # Performance endpoints
+    url(r'', include('openedx.core.djangoapps.performance.urls')),
 
-    url(r'^accounts/login$', 'student.views.accounts_login', name="accounts_login"),
+    # Static template view endpoints like blog, faq, etc.
+    url(r'', include('static_template_view.urls')),
 
-    url(r'^login_ajax$', 'student.views.login_user', name="login"),
-    url(r'^login_ajax/(?P<error>[^/]*)$', 'student.views.login_user'),
-    url(r'^logout$', 'student.views.logout_user', name='logout'),
-    url(r'^create_account$', 'student.views.create_account', name='create_account'),
-    url(r'^activate/(?P<key>[^/]*)$', 'student.views.activate_account', name="activate"),
+    url(r'^heartbeat$', include('openedx.core.djangoapps.heartbeat.urls')),
 
-    url(r'^begin_exam_registration/(?P<course_id>[^/]+/[^/]+/[^/]+)$', 'student.views.begin_exam_registration', name="begin_exam_registration"),
-    url(r'^create_exam_registration$', 'student.views.create_exam_registration'),
+    # Note: these are older versions of the User API that will eventually be
+    # subsumed by api/user listed below.
+    url(r'^user_api/', include('openedx.core.djangoapps.user_api.legacy_urls')),
 
-    url(r'^password_reset/$', 'student.views.password_reset', name='password_reset'),
-    ## Obsolete Django views for password resets
-    ## TODO: Replace with Mako-ized views
-    url(r'^password_change/$', django.contrib.auth.views.password_change,
-        name='auth_password_change'),
-    url(r'^password_change_done/$', django.contrib.auth.views.password_change_done,
-        name='auth_password_change_done'),
-    url(r'^password_reset_confirm/(?P<uidb36>[0-9A-Za-z]+)-(?P<token>.+)/$',
-        'student.views.password_reset_confirm_wrapper',
-        name='auth_password_reset_confirm'),
-    url(r'^password_reset_complete/$', django.contrib.auth.views.password_reset_complete,
-        name='auth_password_reset_complete'),
-    url(r'^password_reset_done/$', django.contrib.auth.views.password_reset_done,
-        name='auth_password_reset_done'),
+    url(r'^notifier_api/', include('notifier_api.urls')),
 
-    url(r'^heartbeat$', include('heartbeat.urls')),
+    url(r'^i18n/', include('django.conf.urls.i18n')),
+
+    # Feedback Form endpoint
+    url(r'^submit_feedback$', 'util.views.submit_feedback'),
+
+    # Enrollment API RESTful endpoints
+    url(r'^api/enrollment/v1/', include('enrollment.urls')),
+
+    # Courseware search endpoints
+    url(r'^search/', include('search.urls')),
+
+    # Course content API
+    url(r'^api/course_structure/', include('course_structure_api.urls', namespace='course_structure_api')),
+
+    # Course API
+    url(r'^api/courses/', include('course_api.urls')),
+
+    # User API endpoints
+    url(r'^api/user/', include('openedx.core.djangoapps.user_api.urls')),
+
+    # Bookmarks API endpoints
+    url(r'^api/bookmarks/', include('openedx.core.djangoapps.bookmarks.urls')),
+
+    # Profile Images API endpoints
+    url(r'^api/profile_images/', include('openedx.core.djangoapps.profile_images.urls')),
+
+    # Video Abstraction Layer used to allow video teams to manage video assets
+    # independently of courseware. https://github.com/edx/edx-val
+    url(r'^api/val/v0/', include('edxval.urls')),
+
+    url(r'^api/commerce/', include('commerce.api.urls', namespace='commerce_api')),
+    url(r'^api/credit/', include('openedx.core.djangoapps.credit.urls', app_name="credit", namespace='credit')),
+    url(r'^rss_proxy/', include('rss_proxy.urls', namespace='rss_proxy')),
+    url(r'^api/organizations/', include('organizations.urls', namespace='organizations')),
+
+    url(r'^catalog/', include('openedx.core.djangoapps.catalog.urls', namespace='catalog')),
+
+    # Update session view
+    url(
+        r'^lang_pref/session_language',
+        'openedx.core.djangoapps.lang_pref.views.update_session_language',
+        name='session_language'
+    ),
+
+    # Multiple course modes and identity verification
+    # TODO Namespace these!
+    url(r'^course_modes/', include('course_modes.urls')),
+    url(r'^verify_student/', include('verify_student.urls')),
+
+    # URLs for managing dark launches of languages
+    url(r'^update_lang/', include('openedx.core.djangoapps.dark_lang.urls', namespace='dark_lang')),
+
+    # URLs for managing theming
+    url(r'^theming/', include('openedx.core.djangoapps.theming.urls', namespace='theming')),
+
+    # For redirecting to help pages.
+    url(r'^help_token/', include('help_tokens.urls')),
+
+    # URLs for API access management
+    url(r'^api-admin/', include('openedx.core.djangoapps.api_admin.urls', namespace='api_admin')),
+
+    url(r'^dashboard/', include('learner_dashboard.urls')),
+    url(r'^api/experiments/', include('experiments.urls', namespace='api_experiments')),
 )
 
-# University profiles only make sense in the default edX context
-if not settings.MITX_FEATURES["USE_CUSTOM_THEME"]:
+# TODO: This needs to move to a separate urls.py once the student_account and
+# student views below find a home together
+if settings.FEATURES["ENABLE_COMBINED_LOGIN_REGISTRATION"]:
+    # Backwards compatibility with old URL structure, but serve the new views
     urlpatterns += (
-        ##
-        ## Only universities without courses should be included here.  If
-        ## courses exist, the dynamic profile rule below should win.
-        ##
-        url(r'^(?i)university_profile/WellesleyX$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'WellesleyX'}),
-        url(r'^(?i)university_profile/McGillX$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'McGillX'}),
-        url(r'^(?i)university_profile/TorontoX$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'TorontoX'}),
-        url(r'^(?i)university_profile/RiceX$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'RiceX'}),
-        url(r'^(?i)university_profile/ANUx$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'ANUx'}),
-        url(r'^(?i)university_profile/EPFLx$', 'courseware.views.static_university_profile',
-            name="static_university_profile", kwargs={'org_id': 'EPFLx'}),
-
-        url(r'^university_profile/(?P<org_id>[^/]+)$', 'courseware.views.university_profile',
-            name="university_profile"),
+        url(r'^login$', 'student_account.views.login_and_registration_form',
+            {'initial_mode': 'login'}, name="signin_user"),
+        url(r'^register$', 'student_account.views.login_and_registration_form',
+            {'initial_mode': 'register'}, name="register_user"),
+    )
+else:
+    # Serve the old views
+    urlpatterns += (
+        url(r'^login$', 'student.views.signin_user', name="signin_user"),
+        url(r'^register$', 'student.views.register_user', name="register_user"),
     )
 
-#Semi-static views (these need to be rendered and have the login bar, but don't change)
+if settings.FEATURES["ENABLE_MOBILE_REST_API"]:
+    urlpatterns += (
+        url(r'^api/mobile/v0.5/', include('mobile_api.urls')),
+    )
+
+if settings.FEATURES["ENABLE_OPENBADGES"]:
+    urlpatterns += (
+        url(r'^api/badges/v1/', include('badges.api.urls', app_name="badges", namespace="badges_api")),
+    )
+
+js_info_dict = {
+    'domain': 'djangojs',
+    # We need to explicitly include external Django apps that are not in LOCALE_PATHS.
+    'packages': ('openassessment',),
+}
+
 urlpatterns += (
-    url(r'^404$', 'static_template_view.views.render',
-        {'template': '404.html'}, name="404"),
+    url(r'^openassessment/fileupload/', include('openassessment.fileupload.urls')),
 )
 
-# Semi-static views only used by edX, not by themes
-if not settings.MITX_FEATURES["USE_CUSTOM_THEME"]:
+
+# sysadmin dashboard, to see what courses are loaded, to delete & load courses
+if settings.FEATURES["ENABLE_SYSADMIN_DASHBOARD"]:
     urlpatterns += (
-        url(r'^jobs$', 'static_template_view.views.render',
-            {'template': 'jobs.html'}, name="jobs"),
-        url(r'^press$', 'student.views.press', name="press"),
-        url(r'^media-kit$', 'static_template_view.views.render',
-            {'template': 'media-kit.html'}, name="media-kit"),
-        url(r'^faq$', 'static_template_view.views.render',
-            {'template': 'faq.html'}, name="faq_edx"),
-        url(r'^help$', 'static_template_view.views.render',
-            {'template': 'help.html'}, name="help_edx"),
-
-        # TODO: (bridger) The copyright has been removed until it is updated for edX
-        # url(r'^copyright$', 'static_template_view.views.render',
-        #     {'template': 'copyright.html'}, name="copyright"),
-
-        #Press releases
-        url(r'^press/([_a-zA-Z0-9-]+)$', 'static_template_view.views.render_press_release', name='press_release'),
-
-        # Favicon
-        (r'^favicon\.ico$', 'django.views.generic.simple.redirect_to', {'url': '/static/images/favicon.ico'}),
-
-        url(r'^submit_feedback$', 'util.views.submit_feedback'),
-
+        url(r'^sysadmin/', include('dashboard.sysadmin_urls')),
     )
 
-# Only enable URLs for those marketing links actually enabled in the
-# settings. Disable URLs by marking them as None.
-for key, value in settings.MKTG_URL_LINK_MAP.items():
-    # Skip disabled URLs
-    if value is None:
-        continue
+urlpatterns += (
+    url(r'^support/', include('support.urls', app_name="support", namespace='support')),
+)
 
-    # These urls are enabled separately
-    if key == "ROOT" or key == "COURSES" or key == "FAQ":
-        continue
-
-    # Make the assumptions that the templates are all in the same dir
-    # and that they all match the name of the key (plus extension)
-    template = "%s.html" % key.lower()
-
-    # To allow theme templates to inherit from default templates,
-    # prepend a standard prefix
-    if settings.MITX_FEATURES["USE_CUSTOM_THEME"]:
-        template = "theme-" + template
-
-    # Make the assumption that the URL we want is the lowercased
-    # version of the map key
-    urlpatterns += (url(r'^%s' % key.lower(),
-                        'static_template_view.views.render',
-                        {'template': template}, name=value),)
-
-
-if settings.PERFSTATS:
-    urlpatterns += (url(r'^reprofile$', 'perfstats.views.end_profile'),)
+# Favicon
+favicon_path = configuration_helpers.get_value('favicon_path', settings.FAVICON_PATH)  # pylint: disable=invalid-name
+urlpatterns += (url(
+    r'^favicon\.ico$',
+    RedirectView.as_view(url=settings.STATIC_URL + favicon_path, permanent=True)
+),)
 
 # Multicourse wiki (Note: wiki urls must be above the courseware ones because of
 # the custom tab catch-all)
@@ -154,8 +182,6 @@ if settings.WIKI_ENABLED:
     from wiki.urls import get_pattern as wiki_pattern
     from django_notify.urls import get_pattern as notify_pattern
 
-    # Note that some of these urls are repeated in course_wiki.course_nav. Make sure to update
-    # them together.
     urlpatterns += (
         # First we include views from course_wiki that we use to override the default views.
         # They come first in the urlpatterns so they get resolved first
@@ -165,280 +191,859 @@ if settings.WIKI_ENABLED:
 
         # These urls are for viewing the wiki in the context of a course. They should
         # never be returned by a reverse() so they come after the other url patterns
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/course_wiki/?$',
+        url(r'^courses/{}/course_wiki/?$'.format(settings.COURSE_ID_PATTERN),
             'course_wiki.views.course_wiki_redirect', name="course_wiki"),
-        url(r'^courses/(?:[^/]+/[^/]+/[^/]+)/wiki/', include(wiki_pattern())),
+        url(r'^courses/{}/wiki/'.format(settings.COURSE_KEY_REGEX), include(wiki_pattern())),
     )
 
+COURSE_URLS = patterns(
+    '',
+    url(
+        r'^look_up_registration_code$',
+        'lms.djangoapps.instructor.views.registration_codes.look_up_registration_code',
+        name='look_up_registration_code',
+    ),
+    url(
+        r'^registration_code_details$',
+        'lms.djangoapps.instructor.views.registration_codes.registration_code_details',
+        name='registration_code_details',
+    ),
+)
+urlpatterns += (
+    # jump_to URLs for direct access to a location in the course
+    url(
+        r'^courses/{}/jump_to/(?P<location>.*)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.jump_to',
+        name='jump_to',
+    ),
+    url(
+        r'^courses/{}/jump_to_id/(?P<module_id>.*)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.jump_to_id',
+        name='jump_to_id',
+    ),
 
-if settings.COURSEWARE_ENABLED:
+    # xblock Handler APIs
+    url(
+        r'^courses/{course_key}/xblock/{usage_key}/handler/(?P<handler>[^/]*)(?:/(?P<suffix>.*))?$'.format(
+            course_key=settings.COURSE_ID_PATTERN,
+            usage_key=settings.USAGE_ID_PATTERN,
+        ),
+        'courseware.module_render.handle_xblock_callback',
+        name='xblock_handler',
+    ),
+    url(
+        r'^courses/{course_key}/xblock/{usage_key}/handler_noauth/(?P<handler>[^/]*)(?:/(?P<suffix>.*))?$'.format(
+            course_key=settings.COURSE_ID_PATTERN,
+            usage_key=settings.USAGE_ID_PATTERN,
+        ),
+        'courseware.module_render.handle_xblock_callback_noauth',
+        name='xblock_handler_noauth',
+    ),
+
+    # xblock View API
+    # (unpublished) API that returns JSON with the HTML fragment and related resources
+    # for the xBlock's requested view.
+    url(
+        r'^courses/{course_key}/xblock/{usage_key}/view/(?P<view_name>[^/]*)$'.format(
+            course_key=settings.COURSE_ID_PATTERN,
+            usage_key=settings.USAGE_ID_PATTERN,
+        ),
+        'courseware.module_render.xblock_view',
+        name='xblock_view',
+    ),
+
+    # xblock Rendering View URL
+    # URL to provide an HTML view of an xBlock. The view type (e.g., student_view) is
+    # passed as a "view" parameter to the URL.
+    # Note: This is not an API. Compare this with the xblock_view API above.
+    url(
+        r'^xblock/{usage_key_string}$'.format(usage_key_string=settings.USAGE_KEY_PATTERN),
+        'courseware.views.views.render_xblock',
+        name='render_xblock',
+    ),
+
+    # xblock Resource URL
+    url(
+        r'xblock/resource/(?P<block_type>[^/]+)/(?P<uri>.*)$',
+        'openedx.core.djangoapps.common_views.xblock.xblock_resource',
+        name='xblock_resource_url',
+    ),
+
+    url(
+        r'^courses/{}/xqueue/(?P<userid>[^/]*)/(?P<mod_id>.*?)/(?P<dispatch>[^/]*)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.module_render.xqueue_callback',
+        name='xqueue_callback',
+    ),
+
+    # TODO: These views need to be updated before they work
+    url(r'^calculate$', 'util.views.calculate'),
+
+    url(r'^courses/?$', 'branding.views.courses', name="courses"),
+
+    #About the course
+    url(
+        r'^courses/{}/about$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.course_about',
+        name='about_course',
+    ),
+
+    url(
+        r'^courses/{}/enroll_staff$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        EnrollStaffView.as_view(),
+        name='enroll_staff',
+    ),
+
+    #Inside the course
+    url(
+        r'^courses/{}/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.course_info',
+        name='course_root',
+    ),
+    url(
+        r'^courses/{}/info$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.course_info',
+        name='info',
+    ),
+    # TODO arjun remove when custom tabs in place, see courseware/courses.py
+    url(
+        r'^courses/{}/syllabus$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.syllabus',
+        name='syllabus',
+    ),
+
+    # Survey associated with a course
+    url(
+        r'^courses/{}/survey$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.course_survey',
+        name='course_survey',
+    ),
+
+    url(
+        r'^courses/{}/book/(?P<book_index>\d+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.index',
+        name='book',
+    ),
+    url(
+        r'^courses/{}/book/(?P<book_index>\d+)/(?P<page>\d+)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.index',
+        name='book',
+    ),
+
+    url(
+        r'^courses/{}/pdfbook/(?P<book_index>\d+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.pdf_index',
+        name='pdf_book',
+    ),
+    url(
+        r'^courses/{}/pdfbook/(?P<book_index>\d+)/(?P<page>\d+)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.pdf_index',
+        name='pdf_book',
+    ),
+
+    url(
+        r'^courses/{}/pdfbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.pdf_index',
+        name='pdf_book',
+    ),
+    url(
+        r'^courses/{}/pdfbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/(?P<page>\d+)$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.pdf_index',
+        name='pdf_book',
+    ),
+
+    url(
+        r'^courses/{}/htmlbook/(?P<book_index>\d+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.html_index',
+        name='html_book',
+    ),
+    url(
+        r'^courses/{}/htmlbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'staticbook.views.html_index',
+        name='html_book',
+    ),
+
+    url(
+        r'^courses/{}/courseware/?$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        CoursewareIndex.as_view(),
+        name='courseware',
+    ),
+    url(
+        r'^courses/{}/courseware/(?P<chapter>[^/]*)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        CoursewareIndex.as_view(),
+        name='courseware_chapter',
+    ),
+    url(
+        r'^courses/{}/courseware/(?P<chapter>[^/]*)/(?P<section>[^/]*)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        CoursewareIndex.as_view(),
+        name='courseware_section',
+    ),
+    url(
+        r'^courses/{}/courseware/(?P<chapter>[^/]*)/(?P<section>[^/]*)/(?P<position>[^/]*)/?$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        CoursewareIndex.as_view(),
+        name='courseware_position',
+    ),
+
+    # progress page
+    url(
+        r'^courses/{}/progress$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.progress',
+        name='progress',
+    ),
+
+    # Takes optional student_id for instructor use--shows profile as that student sees it.
+    url(
+        r'^courses/{}/progress/(?P<student_id>[^/]*)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.progress',
+        name='student_progress',
+    ),
+
+    url(
+        r'^programs/{}/about'.format(
+            r'(?P<program_uuid>[0-9a-f-]+)',
+        ),
+        'courseware.views.views.program_marketing',
+        name='program_marketing_view',
+    ),
+
+    # rest api for grades
+    url(
+        r'^api/grades/',
+        include('lms.djangoapps.grades.api.urls', namespace='grades_api')
+    ),
+
+
+    # For the instructor
+    url(
+        r'^courses/{}/instructor$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.instructor_dashboard.instructor_dashboard_2',
+        name='instructor_dashboard',
+    ),
+
+
+    url(
+        r'^courses/{}/set_course_mode_price$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.instructor_dashboard.set_course_mode_price',
+        name='set_course_mode_price',
+    ),
+    url(
+        r'^courses/{}/instructor/api/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('lms.djangoapps.instructor.views.api_urls')),
+    url(
+        r'^courses/{}/remove_coupon$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.coupons.remove_coupon',
+        name='remove_coupon',
+    ),
+    url(
+        r'^courses/{}/add_coupon$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.coupons.add_coupon',
+        name='add_coupon',
+    ),
+    url(
+        r'^courses/{}/update_coupon$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.coupons.update_coupon',
+        name='update_coupon',
+    ),
+    url(
+        r'^courses/{}/get_coupon_info$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'lms.djangoapps.instructor.views.coupons.get_coupon_info',
+        name='get_coupon_info',
+    ),
+
+    url(
+        r'^courses/{}/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include(COURSE_URLS)
+    ),
+
+    # Discussions Management
+    url(
+        r'^courses/{}/discussions/settings$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'lms.djangoapps.discussion.views.course_discussions_settings_handler',
+        name='course_discussions_settings',
+    ),
+
+    # Cohorts management
+    url(
+        r'^courses/{}/cohorts/settings$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.course_cohort_settings_handler',
+        name='course_cohort_settings',
+    ),
+    url(
+        r'^courses/{}/cohorts/(?P<cohort_id>[0-9]+)?$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.cohort_handler',
+        name='cohorts',
+    ),
+    url(
+        r'^courses/{}/cohorts/(?P<cohort_id>[0-9]+)$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.users_in_cohort',
+        name='list_cohort',
+    ),
+    url(
+        r'^courses/{}/cohorts/(?P<cohort_id>[0-9]+)/add$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.add_users_to_cohort',
+        name='add_to_cohort',
+    ),
+    url(
+        r'^courses/{}/cohorts/(?P<cohort_id>[0-9]+)/delete$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.remove_user_from_cohort',
+        name='remove_from_cohort',
+    ),
+    url(
+        r'^courses/{}/cohorts/debug$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.course_groups.views.debug_cohort_mgmt',
+        name='debug_cohort_mgmt',
+    ),
+    url(
+        r'^courses/{}/discussion/topics$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'lms.djangoapps.discussion.views.discussion_topics',
+        name='discussion_topics',
+    ),
+    url(
+        r'^courses/{}/verified_track_content/settings'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'openedx.core.djangoapps.verified_track_content.views.cohorting_settings',
+        name='verified_track_cohorting',
+    ),
+    url(
+        r'^courses/{}/notes$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'notes.views.notes',
+        name='notes',
+    ),
+    url(
+        r'^courses/{}/notes/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('notes.urls')
+    ),
+
+    # LTI endpoints listing
+    url(
+        r'^courses/{}/lti_rest_endpoints/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.get_course_lti_endpoints',
+        name='lti_rest_endpoints',
+    ),
+
+    # Student account
+    url(
+        r'^account/',
+        include('student_account.urls')
+    ),
+
+    # Student Notes
+    url(
+        r'^courses/{}/edxnotes'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('edxnotes.urls'),
+        name='edxnotes_endpoints',
+    ),
+
+    # Branding API
+    url(
+        r'^api/branding/v1/',
+        include('branding.api_urls')
+    ),
+
+    # Course experience
+    url(
+        r'^courses/{}/course/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('openedx.features.course_experience.urls'),
+    ),
+
+    # Course bookmarks
+    url(
+        r'^courses/{}/bookmarks/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('openedx.features.course_bookmarks.urls'),
+    ),
+
+    # Course search
+    url(
+        r'^courses/{}/search/'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        include('openedx.features.course_search.urls'),
+    ),
+
+    # Learner profile
+    url(
+        r'^u/',
+        include('openedx.features.learner_profile.urls'),
+    ),
+)
+
+if settings.FEATURES["ENABLE_TEAMS"]:
+    # Teams endpoints
     urlpatterns += (
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/jump_to/(?P<location>.*)$',
-            'courseware.views.jump_to', name="jump_to"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/modx/(?P<location>.*?)/(?P<dispatch>[^/]*)$',
-            'courseware.module_render.modx_dispatch',
-            name='modx_dispatch'),
-
-
-        # Software Licenses
-
-        # TODO: for now, this is the endpoint of an ajax replay
-        # service that retrieve and assigns license numbers for
-        # software assigned to a course. The numbers have to be loaded
-        # into the database.
-        url(r'^software-licenses$', 'licenses.views.user_software_license', name="user_software_license"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/xqueue/(?P<userid>[^/]*)/(?P<mod_id>.*?)/(?P<dispatch>[^/]*)$',
-            'courseware.module_render.xqueue_callback',
-            name='xqueue_callback'),
-        url(r'^change_setting$', 'student.views.change_setting',
-            name='change_setting'),
-
-        # TODO: These views need to be updated before they work
-        url(r'^calculate$', 'util.views.calculate'),
-        # TODO: We should probably remove the circuit package. I believe it was only used in the old way of saving wiki circuits for the wiki
-        # url(r'^edit_circuit/(?P<circuit>[^/]*)$', 'circuit.views.edit_circuit'),
-        # url(r'^save_circuit/(?P<circuit>[^/]*)$', 'circuit.views.save_circuit'),
-
-        url(r'^courses/?$', 'branding.views.courses', name="courses"),
-        url(r'^change_enrollment$',
-            'student.views.change_enrollment', name="change_enrollment"),
-
-        #About the course
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/about$',
-            'courseware.views.course_about', name="about_course"),
-        #View for mktg site (kept for backwards compatibility TODO - remove before merge to master)
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/mktg-about$',
-            'courseware.views.mktg_course_about', name="mktg_about_course"),
-        #View for mktg site
-        url(r'^mktg/(?P<course_id>.*)$',
-            'courseware.views.mktg_course_about', name="mktg_about_course"),
-
-        #Inside the course
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/$',
-            'courseware.views.course_info', name="course_root"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/info$',
-            'courseware.views.course_info', name="info"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/syllabus$',
-            'courseware.views.syllabus', name="syllabus"),   # TODO arjun remove when custom tabs in place, see courseware/courses.py
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/book/(?P<book_index>\d+)/$',
-            'staticbook.views.index', name="book"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/book/(?P<book_index>\d+)/(?P<page>\d+)$',
-            'staticbook.views.index', name="book"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/pdfbook/(?P<book_index>\d+)/$',
-            'staticbook.views.pdf_index', name="pdf_book"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/pdfbook/(?P<book_index>\d+)/(?P<page>\d+)$',
-            'staticbook.views.pdf_index', name="pdf_book"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/pdfbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/$',
-            'staticbook.views.pdf_index', name="pdf_book"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/pdfbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/(?P<page>\d+)$',
-            'staticbook.views.pdf_index', name="pdf_book"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/htmlbook/(?P<book_index>\d+)/$',
-            'staticbook.views.html_index', name="html_book"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/htmlbook/(?P<book_index>\d+)/chapter/(?P<chapter>\d+)/$',
-            'staticbook.views.html_index', name="html_book"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/courseware/?$',
-            'courseware.views.index', name="courseware"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/courseware/(?P<chapter>[^/]*)/$',
-            'courseware.views.index', name="courseware_chapter"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/courseware/(?P<chapter>[^/]*)/(?P<section>[^/]*)/$',
-            'courseware.views.index', name="courseware_section"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/courseware/(?P<chapter>[^/]*)/(?P<section>[^/]*)/(?P<position>[^/]*)/?$',
-            'courseware.views.index', name="courseware_position"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/progress$',
-            'courseware.views.progress', name="progress"),
-        # Takes optional student_id for instructor use--shows profile as that student sees it.
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/progress/(?P<student_id>[^/]*)/$',
-            'courseware.views.progress', name="student_progress"),
-
-        # For the instructor
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/instructor$',
-            'instructor.views.instructor_dashboard', name="instructor_dashboard"),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/gradebook$',
-            'instructor.views.gradebook', name='gradebook'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/grade_summary$',
-            'instructor.views.grade_summary', name='grade_summary'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/staff_grading$',
-            'open_ended_grading.views.staff_grading', name='staff_grading'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/staff_grading/get_next$',
-            'open_ended_grading.staff_grading_service.get_next', name='staff_grading_get_next'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/staff_grading/save_grade$',
-            'open_ended_grading.staff_grading_service.save_grade', name='staff_grading_save_grade'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/staff_grading/save_grade$',
-            'open_ended_grading.staff_grading_service.save_grade', name='staff_grading_save_grade'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/staff_grading/get_problem_list$',
-            'open_ended_grading.staff_grading_service.get_problem_list', name='staff_grading_get_problem_list'),
-
-        # Open Ended problem list
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/open_ended_problems$',
-            'open_ended_grading.views.student_problem_list', name='open_ended_problems'),
-
-        # Open Ended flagged problem list
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/open_ended_flagged_problems$',
-            'open_ended_grading.views.flagged_problem_list', name='open_ended_flagged_problems'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/open_ended_flagged_problems/take_action_on_flags$',
-            'open_ended_grading.views.take_action_on_flags', name='open_ended_flagged_problems_take_action'),
-
-        # Cohorts management
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts$',
-            'course_groups.views.list_cohorts', name="cohorts"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts/add$',
-            'course_groups.views.add_cohort',
-            name="add_cohort"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts/(?P<cohort_id>[0-9]+)$',
-            'course_groups.views.users_in_cohort',
-            name="list_cohort"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts/(?P<cohort_id>[0-9]+)/add$',
-            'course_groups.views.add_users_to_cohort',
-            name="add_to_cohort"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts/(?P<cohort_id>[0-9]+)/delete$',
-            'course_groups.views.remove_user_from_cohort',
-            name="remove_from_cohort"),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/cohorts/debug$',
-            'course_groups.views.debug_cohort_mgmt',
-            name="debug_cohort_mgmt"),
-
-        # Open Ended Notifications
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/open_ended_notifications$',
-            'open_ended_grading.views.combined_notifications', name='open_ended_notifications'),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/peer_grading$',
-            'open_ended_grading.views.peer_grading', name='peer_grading'),
-
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/notes$', 'notes.views.notes', name='notes'),
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/notes/', include('notes.urls')),
-
+        url(
+            r'^api/team/',
+            include('lms.djangoapps.teams.api_urls')
+        ),
+        url(
+            r'^courses/{}/teams'.format(
+                settings.COURSE_ID_PATTERN,
+            ),
+            include('lms.djangoapps.teams.urls'),
+            name='teams_endpoints',
+        ),
     )
 
-    # allow course staff to change to student view of courseware
-    if settings.MITX_FEATURES.get('ENABLE_MASQUERADE'):
-        urlpatterns += (
-            url(r'^masquerade/(?P<marg>.*)$', 'courseware.masquerade.handle_ajax', name="masquerade-switch"),
-        )
-
-    # discussion forums live within courseware, so courseware must be enabled first
-    if settings.MITX_FEATURES.get('ENABLE_DISCUSSION_SERVICE'):
-        urlpatterns += (
-            url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/news$',
-                'courseware.views.news', name="news"),
-            url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/discussion/',
-                include('django_comment_client.urls'))
-        )
+# allow course staff to change to student view of courseware
+if settings.FEATURES.get('ENABLE_MASQUERADE'):
     urlpatterns += (
-        # This MUST be the last view in the courseware--it's a catch-all for custom tabs.
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/(?P<tab_slug>[^/]+)/$',
-        'courseware.views.static_tab', name="static_tab"),
+        url(
+            r'^courses/{}/masquerade$'.format(
+                settings.COURSE_KEY_PATTERN,
+            ),
+            'courseware.masquerade.handle_ajax',
+            name='masquerade_update',
+        ),
     )
 
-    if settings.MITX_FEATURES.get('ENABLE_STUDENT_HISTORY_VIEW'):
-        urlpatterns += (
-            url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/submission_history/(?P<student_username>[^/]*)/(?P<location>.*?)$',
-                'courseware.views.submission_history',
-                name='submission_history'),
-        )
+urlpatterns += (
+    url(
+        r'^courses/{}/generate_user_cert'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        'courseware.views.views.generate_user_cert',
+        name='generate_user_cert',
+    ),
+)
 
+# discussion forums live within courseware, so courseware must be enabled first
+if settings.FEATURES.get('ENABLE_DISCUSSION_SERVICE'):
+    urlpatterns += (
+        url(
+            r'^api/discussion/',
+            include('discussion_api.urls')
+        ),
+        url(
+            r'^courses/{}/discussion/'.format(
+                settings.COURSE_ID_PATTERN,
+            ),
+            include('django_comment_client.urls')
+        ),
+        url(
+            r'^courses/{}/discussion/forum/'.format(
+                settings.COURSE_ID_PATTERN,
+            ),
+            include('discussion.urls')
+        ),
+        url(
+            r'^notification_prefs/enable/',
+            'notification_prefs.views.ajax_enable'
+        ),
+        url(
+            r'^notification_prefs/disable/',
+            'notification_prefs.views.ajax_disable'
+        ),
+        url(
+            r'^notification_prefs/status/',
+            'notification_prefs.views.ajax_status'
+        ),
+        url(
+            r'^notification_prefs/unsubscribe/(?P<token>[a-zA-Z0-9-_=]+)/',
+            'notification_prefs.views.set_subscription',
+            {
+                'subscribe': False,
+            },
+            name='unsubscribe_forum_update',
+        ),
+        url(
+            r'^notification_prefs/resubscribe/(?P<token>[a-zA-Z0-9-_=]+)/',
+            'notification_prefs.views.set_subscription',
+            {
+                'subscribe': True,
+            },
+            name='resubscribe_forum_update',
+        ),
+    )
 
-if settings.ENABLE_JASMINE:
-    urlpatterns += (url(r'^_jasmine/', include('django_jasmine.urls')),)
+urlpatterns += (
+    url(
+        r'^courses/{}/tab/(?P<tab_type>[^/]+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        CourseTabView.as_view(),
+        name='course_tab_view',
+    ),
+)
 
-if settings.DEBUG or settings.MITX_FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
+urlpatterns += (
+    # This MUST be the last view in the courseware--it's a catch-all for custom tabs.
+    url(
+        r'^courses/{}/(?P<tab_slug>[^/]+)/$'.format(
+            settings.COURSE_ID_PATTERN,
+        ),
+        StaticCourseTabView.as_view(),
+        name='static_tab',
+    ),
+)
+
+if settings.FEATURES.get('ENABLE_STUDENT_HISTORY_VIEW'):
+    urlpatterns += (
+        url(
+            r'^courses/{}/submission_history/(?P<student_username>[^/]*)/(?P<location>.*?)$'.format(
+                settings.COURSE_ID_PATTERN
+            ),
+            'courseware.views.views.submission_history',
+            name='submission_history',
+        ),
+    )
+
+if settings.FEATURES.get('CLASS_DASHBOARD'):
+    urlpatterns += (
+        url(r'^class_dashboard/', include('class_dashboard.urls')),
+    )
+
+if settings.DEBUG or settings.FEATURES.get('ENABLE_DJANGO_ADMIN_SITE'):
     ## Jasmine and admin
     urlpatterns += (url(r'^admin/', include(admin.site.urls)),)
 
-if settings.MITX_FEATURES.get('AUTH_USE_OPENID'):
+if settings.FEATURES.get('AUTH_USE_OPENID'):
     urlpatterns += (
         url(r'^openid/login/$', 'django_openid_auth.views.login_begin', name='openid-login'),
-        url(r'^openid/complete/$', 'external_auth.views.openid_login_complete', name='openid-complete'),
+        url(
+            r'^openid/complete/$',
+            'openedx.core.djangoapps.external_auth.views.openid_login_complete',
+            name='openid-complete',
+        ),
         url(r'^openid/logo.gif$', 'django_openid_auth.views.logo', name='openid-logo'),
     )
 
-if settings.MITX_FEATURES.get('AUTH_USE_SHIB'):
+if settings.FEATURES.get('AUTH_USE_SHIB'):
     urlpatterns += (
-        url(r'^shib-login/$', 'external_auth.views.shib_login', name='shib-login'),
+        url(r'^shib-login/$', 'openedx.core.djangoapps.external_auth.views.shib_login', name='shib-login'),
     )
 
-if settings.MITX_FEATURES.get('RESTRICT_ENROLL_BY_REG_METHOD'):
+if settings.FEATURES.get('AUTH_USE_CAS'):
     urlpatterns += (
-        url(r'^course_specific_login/(?P<course_id>[^/]+/[^/]+/[^/]+)/$',
-            'external_auth.views.course_specific_login', name='course-specific-login'),
-        url(r'^course_specific_register/(?P<course_id>[^/]+/[^/]+/[^/]+)/$',
-            'external_auth.views.course_specific_register', name='course-specific-register'),
+        url(r'^cas-auth/login/$', 'openedx.core.djangoapps.external_auth.views.cas_login', name="cas-login"),
+        url(r'^cas-auth/logout/$', 'django_cas.views.logout', {'next_page': '/'}, name="cas-logout"),
+    )
+
+if settings.FEATURES.get('RESTRICT_ENROLL_BY_REG_METHOD'):
+    urlpatterns += (
+        url(r'^course_specific_login/{}/$'.format(settings.COURSE_ID_PATTERN),
+            'openedx.core.djangoapps.external_auth.views.course_specific_login', name='course-specific-login'),
+        url(r'^course_specific_register/{}/$'.format(settings.COURSE_ID_PATTERN),
+            'openedx.core.djangoapps.external_auth.views.course_specific_register', name='course-specific-register'),
 
     )
 
-
-if settings.MITX_FEATURES.get('AUTH_USE_OPENID_PROVIDER'):
+if configuration_helpers.get_value('ENABLE_BULK_ENROLLMENT_VIEW',
+                                   settings.FEATURES['ENABLE_BULK_ENROLLMENT_VIEW']):
     urlpatterns += (
-        url(r'^openid/provider/login/$', 'external_auth.views.provider_login', name='openid-provider-login'),
-        url(r'^openid/provider/login/(?:.+)$', 'external_auth.views.provider_identity', name='openid-provider-login-identity'),
-        url(r'^openid/provider/identity/$', 'external_auth.views.provider_identity', name='openid-provider-identity'),
-        url(r'^openid/provider/xrds/$', 'external_auth.views.provider_xrds', name='openid-provider-xrds')
+        url(r'^api/bulk_enroll/v1/', include('bulk_enroll.urls')),
     )
 
-if settings.MITX_FEATURES.get('ENABLE_PEARSON_LOGIN', False):
-    urlpatterns += url(r'^testcenter/login$', 'external_auth.views.test_center_login'),
 
-if settings.MITX_FEATURES.get('ENABLE_LMS_MIGRATION'):
+# Shopping cart
+urlpatterns += (
+    url(r'^shoppingcart/', include('shoppingcart.urls')),
+    url(r'^commerce/', include('commerce.urls', namespace='commerce')),
+)
+
+# Course goals
+urlpatterns += (
+    url(r'^api/course_goals/', include('lms.djangoapps.course_goals.urls', namespace='course_goals_api')),
+)
+
+# Embargo
+if settings.FEATURES.get('EMBARGO'):
+    urlpatterns += (
+        url(r'^embargo/', include('openedx.core.djangoapps.embargo.urls', namespace='embargo')),
+        url(r'^api/embargo/', include('openedx.core.djangoapps.embargo.urls', namespace='api_embargo')),
+    )
+
+# Survey Djangoapp
+urlpatterns += (
+    url(r'^survey/', include('survey.urls')),
+)
+
+if settings.FEATURES.get('AUTH_USE_OPENID_PROVIDER'):
+    urlpatterns += (
+        url(
+            r'^openid/provider/login/$',
+            'openedx.core.djangoapps.external_auth.views.provider_login',
+            name='openid-provider-login',
+        ),
+        url(
+            r'^openid/provider/login/(?:.+)$',
+            'openedx.core.djangoapps.external_auth.views.provider_identity',
+            name='openid-provider-login-identity'
+        ),
+        url(
+            r'^openid/provider/identity/$',
+            'openedx.core.djangoapps.external_auth.views.provider_identity',
+            name='openid-provider-identity',
+        ),
+        url(
+            r'^openid/provider/xrds/$',
+            'openedx.core.djangoapps.external_auth.views.provider_xrds',
+            name='openid-provider-xrds',
+        ),
+    )
+
+if settings.FEATURES.get('ENABLE_OAUTH2_PROVIDER'):
+    urlpatterns += (
+        # These URLs dispatch to django-oauth-toolkit or django-oauth2-provider as appropriate.
+        # Developers should use these routes, to maintain compatibility for existing client code
+        url(r'^oauth2/', include('openedx.core.djangoapps.oauth_dispatch.urls')),
+        # These URLs contain the django-oauth2-provider default behavior.  It exists to provide
+        # URLs for django-oauth2-provider to call using reverse() with the oauth2 namespace, and
+        # also to maintain support for views that have not yet been wrapped in dispatch views.
+        url(r'^oauth2/', include('edx_oauth2_provider.urls', namespace='oauth2')),
+        # The /_o/ prefix exists to provide a target for code in django-oauth-toolkit that
+        # uses reverse() with the 'oauth2_provider' namespace.  Developers should not access these
+        # views directly, but should rather use the wrapped views at /oauth2/
+        url(r'^_o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    )
+
+if settings.FEATURES.get('ENABLE_LMS_MIGRATION'):
     urlpatterns += (
         url(r'^migrate/modules$', 'lms_migration.migrate.manage_modulestores'),
         url(r'^migrate/reload/(?P<reload_dir>[^/]+)$', 'lms_migration.migrate.manage_modulestores'),
-        url(r'^migrate/reload/(?P<reload_dir>[^/]+)/(?P<commit_id>[^/]+)$', 'lms_migration.migrate.manage_modulestores'),
+        url(
+            r'^migrate/reload/(?P<reload_dir>[^/]+)/(?P<commit_id>[^/]+)$',
+            'lms_migration.migrate.manage_modulestores'
+        ),
         url(r'^gitreload$', 'lms_migration.migrate.gitreload'),
         url(r'^gitreload/(?P<reload_dir>[^/]+)$', 'lms_migration.migrate.gitreload'),
     )
 
-if settings.MITX_FEATURES.get('ENABLE_SQL_TRACKING_LOGS'):
+if settings.FEATURES.get('ENABLE_SQL_TRACKING_LOGS'):
     urlpatterns += (
         url(r'^event_logs$', 'track.views.view_tracking_log'),
         url(r'^event_logs/(?P<args>.+)$', 'track.views.view_tracking_log'),
     )
 
-if settings.MITX_FEATURES.get('ENABLE_SERVICE_STATUS'):
+if settings.FEATURES.get('ENABLE_SERVICE_STATUS'):
     urlpatterns += (
-        url(r'^status/', include('service_status.urls')),
+        url(r'^status/', include('openedx.core.djangoapps.service_status.urls')),
     )
 
-if settings.MITX_FEATURES.get('ENABLE_INSTRUCTOR_BACKGROUND_TASKS'):
+if settings.FEATURES.get('ENABLE_INSTRUCTOR_BACKGROUND_TASKS'):
     urlpatterns += (
-        url(r'^instructor_task_status/$', 'instructor_task.views.instructor_task_status', name='instructor_task_status'),
+        url(
+            r'^instructor_task_status/$',
+            'lms.djangoapps.instructor_task.views.instructor_task_status',
+            name='instructor_task_status'
+        ),
     )
 
-if settings.MITX_FEATURES.get('RUN_AS_ANALYTICS_SERVER_ENABLED'):
+if settings.FEATURES.get('RUN_AS_ANALYTICS_SERVER_ENABLED'):
     urlpatterns += (
         url(r'^edinsights_service/', include('edinsights.core.urls')),
     )
-    import edinsights.core.registry
 
-# FoldIt views
+if settings.FEATURES.get('ENABLE_DEBUG_RUN_PYTHON'):
+    urlpatterns += (
+        url(r'^debug/run_python$', 'debug.views.run_python'),
+    )
+
 urlpatterns += (
-    # The path is hardcoded into their app...
-    url(r'^comm/foldit_ops', 'foldit.views.foldit_ops', name="foldit_ops"),
+    url(r'^debug/show_parameters$', 'debug.views.show_parameters'),
 )
 
-if settings.MITX_FEATURES.get('ENABLE_DEBUG_RUN_PYTHON'):
+
+# Third-party auth.
+if settings.FEATURES.get('ENABLE_THIRD_PARTY_AUTH'):
     urlpatterns += (
-        url(r'^debug/run_python', 'debug.views.run_python'),
+        url(r'', include('third_party_auth.urls')),
+        url(r'api/third_party_auth/', include('third_party_auth.api.urls')),
+        # NOTE: The following login_oauth_token endpoint is DEPRECATED.
+        # Please use the exchange_access_token endpoint instead.
+        url(r'^login_oauth_token/(?P<backend>[^/]+)/$', 'student.views.login_oauth_token'),
     )
 
-# Crowdsourced hinting instructor manager.
-if settings.MITX_FEATURES.get('ENABLE_HINTER_INSTRUCTOR_VIEW'):
+# Enterprise
+if enterprise_enabled():
     urlpatterns += (
-        url(r'^courses/(?P<course_id>[^/]+/[^/]+/[^/]+)/hint_manager$',
-            'instructor.hint_manager.hint_manager', name="hint_manager"),
+        url(r'', include('enterprise.urls')),
     )
+
+# OAuth token exchange
+if settings.FEATURES.get('ENABLE_OAUTH2_PROVIDER'):
+    urlpatterns += (
+        url(
+            r'^oauth2/login/$',
+            LoginWithAccessTokenView.as_view(),
+            name="login_with_access_token"
+        ),
+    )
+
+# Certificates
+urlpatterns += (
+    url(r'^certificates/', include('certificates.urls', app_name="certificates", namespace="certificates")),
+
+    # Backwards compatibility with XQueue, which uses URLs that are not prefixed with /certificates/
+    url(r'^update_certificate$', 'certificates.views.update_certificate'),
+    url(r'^update_example_certificate$', 'certificates.views.update_example_certificate'),
+    url(r'^request_certificate$', 'certificates.views.request_certificate'),
+
+    # REST APIs
+    url(r'^api/certificates/',
+        include('lms.djangoapps.certificates.apis.urls', namespace='certificates_api')),
+)
+
+# XDomain proxy
+urlpatterns += (
+    url(r'^xdomain_proxy.html$', 'openedx.core.djangoapps.cors_csrf.views.xdomain_proxy', name='xdomain_proxy'),
+)
+
+# Custom courses on edX (CCX) URLs
+if settings.FEATURES["CUSTOM_COURSES_EDX"]:
+    urlpatterns += (
+        url(r'^courses/{}/'.format(settings.COURSE_ID_PATTERN),
+            include('ccx.urls')),
+        url(r'^api/ccx/', include('lms.djangoapps.ccx.api.urls', namespace='ccx_api')),
+    )
+
+# Access to courseware as an LTI provider
+if settings.FEATURES.get("ENABLE_LTI_PROVIDER"):
+    urlpatterns += (
+        url(r'^lti_provider/', include('lti_provider.urls')),
+    )
+
+urlpatterns += (
+    url(r'config/self_paced', ConfigurationModelCurrentAPIView.as_view(model=SelfPacedConfiguration)),
+    url(r'config/programs', ConfigurationModelCurrentAPIView.as_view(model=ProgramsApiConfig)),
+    url(r'config/catalog', ConfigurationModelCurrentAPIView.as_view(model=CatalogIntegration)),
+    url(r'config/forums', ConfigurationModelCurrentAPIView.as_view(model=ForumsConfig)),
+)
 
 urlpatterns = patterns(*urlpatterns)
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(
+        settings.PROFILE_IMAGE_BACKEND['options']['base_url'],
+        document_root=settings.PROFILE_IMAGE_BACKEND['options']['location']
+    )
 
-#Custom error pages
+# UX reference templates
+urlpatterns += url(r'^template/(?P<template>.+)$', 'openedx.core.djangoapps.debug.views.show_reference_template'),
+
+if 'debug_toolbar' in settings.INSTALLED_APPS:
+    import debug_toolbar
+    urlpatterns += (
+        url(r'^__debug__/', include(debug_toolbar.urls)),
+    )
+
+
+# Custom error pages
+# These are used by Django to render these error codes. Do not remove.
+# pylint: disable=invalid-name
 handler404 = 'static_template_view.views.render_404'
 handler500 = 'static_template_view.views.render_500'
+
+# include into our URL patterns the HTTP REST API that comes with edx-proctoring.
+urlpatterns += (
+    url(r'^api/', include('edx_proctoring.urls')),
+)
+
+if settings.FEATURES.get('ENABLE_FINANCIAL_ASSISTANCE_FORM'):
+    urlpatterns += (
+        url(
+            r'^financial-assistance/$',
+            'courseware.views.views.financial_assistance',
+            name='financial_assistance'
+        ),
+        url(
+            r'^financial-assistance/apply/$',
+            'courseware.views.views.financial_assistance_form',
+            name='financial_assistance_form'
+        ),
+        url(
+            r'^financial-assistance/submit/$',
+            'courseware.views.views.financial_assistance_request',
+            name='submit_financial_assistance_request'
+        )
+    )

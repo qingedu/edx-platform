@@ -2,31 +2,8 @@ div.book-wrapper {
   max-width: 1150px;
   margin: 0 auto;
   width: 100%;
-  background-color: $white;
 
-  #toolbarViewer {
-    padding: 0 ($baseline/2);
-
-    #toolbarViewerLeft {
-      display: inline-block;
-    }
-
-    .outerCenter {
-      display: inline-block;
-      position: absolute;
-      right: ($baseline/2);
-
-      .innerCenter {
-        right: auto;
-      }
-
-      .dropdownToolbarButton {
-        margin: 3px 2px 4px 0;
-      }
-    }
-
-
-  }
+  /*background-color: $white;*/
 
   #open_close_accordion {
     display: none;
@@ -44,33 +21,32 @@ div.book-wrapper {
   section.book-sidebar {
     @extend .sidebar;
     @extend .tran;
+
     @include box-sizing(border-box);
-    padding: 10px 0;
+
+    padding: ($baseline/2) 0;
     border-radius: 3px 0 0 3px;
-    border: 1px solid #ccc;
+    border: 1px solid $gray-l3;
     border-right: none;
-    width: 250px;
+    width: 180px;
 
-    ul#booknav {
-      font-size: em(14);
-
-      .chapter-number {
-      }
+    #booknav {
+      list-style: none;
 
       .chapter {
-        float: left;
-        width: 87%;
         line-height: 1.4em;
       }
 
       .page-number {
-        float: right;
+        @include float(right);
+
         width: 12%;
-        font-size: .8em;
+        font-size: 0.8em;
         line-height: 2.1em;
         text-align: right;
         color: #9a9a9a;
-        opacity: 0.0;
+        opacity: 0;
+
         @include transition(opacity .15s linear 0s);
       }
 
@@ -80,28 +56,27 @@ div.book-wrapper {
         padding-left: ($baseline/2);
 
         a {
-          @include clearfix;
-          padding: 0;
-          color: $link-color;
-          cursor: pointer;
+          @include clearfix();
 
-          &:hover {
+          padding: 0;
+          color: $uxpl-blue-base;
+
+          &:hover, &:focus {
             background-color: transparent;
-            color: $link-hover;
+            color: $uxpl-blue-hover-active;
 
             .page-number {
-              opacity: 1.0;
+              opacity: 1;
             }
           }
         }
 
         div.hitarea {
-          background-image: url('../images/treeview-default.gif');
-
+          background-image: url('#{$static-path}/images/treeview-default.gif');
           position: relative;
           top: 4px;
 
-          &:hover {
+          &:hover, &:focus {
             filter: alpha(opacity=60);
             opacity: 0.6;
           }
@@ -113,20 +88,21 @@ div.book-wrapper {
           padding-top: lh(.25);
 
           li {
-            padding-bottom: 10px;
+            padding-bottom: ($baseline/2);
           }
         }
       }
 
       > li {
-        padding: 5px 6px;
+        padding: ($baseline/4) 6px;
         margin: ($baseline/4) ($baseline/2);
       }
     }
   }
 
-  section.book {
+  .book {
     @extend .content;
+
     padding: 0;
     width:76%;
 
@@ -135,6 +111,7 @@ div.book-wrapper {
 
       a {
         @extend .block-link;
+
         padding: 0 lh();
       }
 
@@ -151,19 +128,26 @@ div.book-wrapper {
             background-color: rgba(#000, .7);
             background-position: center;
             background-repeat: no-repeat;
+
             @include box-sizing(border-box);
+
             display: table;
             height: 100%;
-            opacity: 0.0;
+            opacity: 0;
             filter: alpha(opacity=0);
             text-indent: -9999px;
+
             @include transition(none);
+
             vertical-align: middle;
             width: 100%;
 
-            &:hover {
-              opacity: 1.0;
-              filter: alpha(opacity=100);
+            &:hover, &:focus {
+              opacity: 1;
+            }
+
+            &.is-disabled {
+              display:none;
             }
           }
 
@@ -171,7 +155,7 @@ div.book-wrapper {
             left: 0;
 
             a {
-              background-image: url('../images/textbook/textbook-left.png');
+              background-image: url('#{$static-path}/images/textbook/textbook-left.png');
             }
           }
 
@@ -179,7 +163,7 @@ div.book-wrapper {
             right: 0;
 
             a {
-              background-image: url('../images/textbook/textbook-right.png');
+              background-image: url('#{$static-path}/images/textbook/textbook-right.png');
             }
           }
 
@@ -195,7 +179,7 @@ div.book-wrapper {
 
     section.page {
       border-left: 1px solid $border-color;
-      background-color: #fff;
+      background-color: $white;
       position: relative;
       text-align: center;
       border-radius: 0 3px 3px 0;
@@ -210,12 +194,12 @@ div.book-wrapper {
 
       div {
         text-align: left;
-      	line-height: 1.6em;
-      	margin: 5px;
+        line-height: 1.6em;
+        margin: ($baseline/4);
 
-	.Paragraph, h2 {
-	   margin-top: 10px;
-	}
+        .Paragraph, h2 {
+          margin-top: ($baseline/2);
+        }
       }
     }
   }
@@ -228,7 +212,7 @@ div.book-wrapper {
         padding: 0;
 
         a {
-          background-image: url('../images/slide-right-icon.png');
+          background-image: url('#{$static-path}/images/slide-right-icon.png');
         }
 
         h2 {
@@ -252,6 +236,3 @@ div.book-wrapper {
     }
   }
 }
-
-
-

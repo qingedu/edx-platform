@@ -1,13 +1,18 @@
-from factory import DjangoModelFactory
-from django_comment_common.models import Role, Permission
+from factory.django import DjangoModelFactory
+
+from django_comment_common.models import Permission, Role
 
 
 class RoleFactory(DjangoModelFactory):
-    FACTORY_FOR = Role
+    class Meta(object):
+        model = Role
+
     name = 'Student'
     course_id = 'edX/toy/2012_Fall'
 
 
 class PermissionFactory(DjangoModelFactory):
-    FACTORY_FOR = Permission
+    class Meta(object):
+        model = Permission
+
     name = 'create_comment'

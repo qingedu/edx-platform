@@ -1,8 +1,9 @@
+import json
 import unittest
 
 import draganddrop
+
 from .draganddrop import PositionsCompare
-import json
 
 
 class Test_PositionsCompare(unittest.TestCase):
@@ -90,15 +91,16 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
             },
             {
                 'draggables': ['up_and_down'],
-                'targets': [
-                's_l[s][1]', 's_r[s][1]'
-                ],
+                'targets': ['s_l[s][1]', 's_r[s][1]'],
                 'rule': 'unordered_equal'
             },
             {
                 'draggables': ['up'],
                 'targets': [
-                'p_l[p][1]', 'p_l[p][3]', 'p_r[p][1]', 'p_r[p][3]'
+                    'p_l[p][1]',
+                    'p_l[p][3]',
+                    'p_r[p][1]',
+                    'p_r[p][3]',
                 ],
                 'rule': 'unordered_equal'
             }
@@ -132,15 +134,16 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
             },
             {
                 'draggables': ['up_and_down'],
-                'targets': [
-                's_l[s][1]', 's_r[s][1]'
-                ],
+                'targets': ['s_l[s][1]', 's_r[s][1]'],
                 'rule': 'unordered_equal'
             },
             {
                 'draggables': ['up'],
                 'targets': [
-                'p_l[p][1]', 'p_l[p][3]', 'p_r[p][1]', 'p_r[p][3]'
+                    'p_l[p][1]',
+                    'p_l[p][3]',
+                    'p_r[p][1]',
+                    'p_r[p][3]',
                 ],
                 'rule': 'unordered_equal'
             }
@@ -173,7 +176,7 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
                 'draggables': ['p'],
                 'targets': [
                     'left_side_tagret[molecule][p_target]',
-                    'right_side_tagret[molecule][p_target]'
+                    'right_side_tagret[molecule][p_target]',
                 ],
                 'rule': 'unordered_equal'
             },
@@ -181,7 +184,7 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
                 'draggables': ['s'],
                 'targets': [
                     'left_side_tagret[molecule][s_target]',
-                    'right_side_tagret[molecule][s_target]'
+                    'right_side_tagret[molecule][s_target]',
                 ],
                 'rule': 'unordered_equal'
             },
@@ -189,7 +192,7 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
                 'draggables': ['up_and_down'],
                 'targets': [
                     'left_side_tagret[molecule][s_target][s][1]',
-                    'right_side_tagret[molecule][s_target][s][1]'
+                    'right_side_tagret[molecule][s_target][s][1]',
                 ],
                 'rule': 'unordered_equal'
             },
@@ -199,7 +202,8 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
                     'left_side_tagret[molecule][p_target][p][1]',
                     'left_side_tagret[molecule][p_target][p][3]',
                     'right_side_tagret[molecule][p_target][p][1]',
-                    'right_side_tagret[molecule][p_target][p][3]'],
+                    'right_side_tagret[molecule][p_target][p][3]',
+                ],
                 'rule': 'unordered_equal'
             }
         ]
@@ -255,15 +259,24 @@ class Test_DragAndDrop_Grade(unittest.TestCase):
             },
             {
                 'draggables': ['up'],
-                'targets': ['p_l[triple_draggable][1]', 'p_l[triple_draggable][2]',
-                'p_r[triple_draggable][2]', 'p_r[triple_draggable][3]'],
+                'targets': [
+                    'p_l[triple_draggable][1]',
+                    'p_l[triple_draggable][2]',
+                    'p_r[triple_draggable][2]',
+                    'p_r[triple_draggable][3]',
+                ],
                 'rule': 'unordered_equal'
             },
             {
                 'draggables': ['up_and_down'],
-                'targets': ['s_l[single_draggable][1]', 's_r[single_draggable][1]',
-                's_sigma[single_draggable][1]', 's_sigma*[single_draggable][1]',
-                'p_pi[double_draggable][1]', 'p_pi[double_draggable][2]'],
+                'targets': [
+                    's_l[single_draggable][1]',
+                    's_r[single_draggable][1]',
+                    's_sigma[single_draggable][1]',
+                    's_sigma*[single_draggable][1]',
+                    'p_pi[double_draggable][1]',
+                    'p_pi[double_draggable][2]',
+                ],
                 'rule': 'unordered_equal'
             },
 

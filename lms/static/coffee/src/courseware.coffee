@@ -2,8 +2,6 @@ class @Courseware
   @prefix: ''
 
   constructor: ->
-    Courseware.prefix = $("meta[name='path_prefix']").attr('content')
-    new Navigation
     Logger.bind()
     @render()
 
@@ -11,7 +9,7 @@ class @Courseware
     new Courseware
 
   render: ->
-    XModule.loadModules()
+    XBlock.initializeBlocks($('.course-content'))
     $('.course-content .histogram').each ->
       id = $(this).attr('id').replace(/histogram_/, '')
       try

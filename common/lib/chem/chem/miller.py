@@ -1,10 +1,11 @@
 """ Calculation of Miller indices """
 
-import numpy as np
-import math
-import fractions as fr
 import decimal
+import fractions as fr
 import json
+import math
+
+import numpy as np
 
 
 def lcm(a, b):
@@ -49,7 +50,7 @@ def segment_to_fraction(distance):
     with nice fractions (which produce small Miller indices), he may want shift
     to new origin if segments are like S = (0.015, > 0.05, >0.05) - close to zero
     in one coordinate. He may update S to (0, >0.05, >0.05) and shift origin.
-    In this way he can recieve nice small fractions. Also there is can be
+    In this way he can receive nice small fractions. Also there is can be
     degenerated case when S = (0.015, 0.012, >0.05) - if update S to (0, 0, >0.05) -
     it is a line. This case  should be considered separately. Small nice Miller
     numbers and possibility to create very small segments can not be implemented
@@ -96,9 +97,11 @@ def sub_miller(segments):
     '''
     fracts = [segment_to_fraction(segment) for segment in segments]
     common_denominator = reduce(lcm, [fract.denominator for fract in fracts])
-    miller = ([fract.numerator * math.fabs(common_denominator) /
-                                fract.denominator for fract in fracts])
-    return'(' + ','.join(map(str, map(decimal.Decimal, miller))) + ')'
+    miller_indices = ([
+        fract.numerator * math.fabs(common_denominator) / fract.denominator
+        for fract in fracts
+    ])
+    return'(' + ','.join(map(str, map(decimal.Decimal, miller_indices))) + ')'
 
 
 def miller(points):
@@ -145,19 +148,22 @@ def miller(points):
     O = np.array([0, 0, 0])
     P = points[0]  # point of plane
     Ccs = map(np.array, [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]])
-    segments = ([np.dot(P - O, N) / np.dot(ort, N) if np.dot(ort, N) != 0 else
-                                            np.nan for ort in Ccs])
+    segments = ([
+        np.dot(P - O, N) / np.dot(ort, N) if np.dot(ort, N) != 0
+        else np.nan for ort in Ccs
+    ])
     if any(x == 0 for x in segments):  # Plane goes through origin.
-        vertices = [  # top:
-                    np.array([1.0, 1.0, 1.0]),
-                    np.array([0.0, 0.0, 1.0]),
-                    np.array([1.0, 0.0, 1.0]),
-                    np.array([0.0, 1.0, 1.0]),
-                    # bottom, except 0,0,0:
-                    np.array([1.0, 0.0, 0.0]),
-                    np.array([0.0, 1.0, 0.0]),
-                    np.array([1.0, 1.0, 1.0]),
-                ]
+        vertices = [
+            # top:
+            np.array([1.0, 1.0, 1.0]),
+            np.array([0.0, 0.0, 1.0]),
+            np.array([1.0, 0.0, 1.0]),
+            np.array([0.0, 1.0, 1.0]),
+            # bottom, except 0,0,0:
+            np.array([1.0, 0.0, 0.0]),
+            np.array([0.0, 1.0, 0.0]),
+            np.array([1.0, 1.0, 1.0]),
+        ]
         for vertex in vertices:
             if np.dot(vertex - O, N) != 0:  # vertex not in plane
                 new_origin = vertex

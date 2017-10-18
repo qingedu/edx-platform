@@ -1,24 +1,56 @@
-/////////////////////////////////////////////////////////////////////////////
-//
-//  Simple image input 
-//
-////////////////////////////////////////////////////////////////////////////////
+/**
+ * Simple image input
+ *
+ *
+ * Click on image. Update the coordinates of a dot on the image.
+ * The new coordinates are the location of the click.
+ */
 
-// click on image, return coordinates
-// put a dot at location of click, on imag
+/**
+ * 'The wise adapt themselves to circumstances, as water molds itself to the
+ * pitcher.'
+ *
+ * ~ Chinese Proverb
+ */
 
-// window.image_input_click = function(id,event){
+window.ImageInput = (function($, undefined) {
+    var ImageInput = ImageInputConstructor;
 
-function image_input_click(id,event){
-    iidiv = document.getElementById("imageinput_"+id);
-    pos_x = event.offsetX?(event.offsetX):event.pageX-iidiv.offsetLeft;
-    pos_y = event.offsetY?(event.offsetY):event.pageY-iidiv.offsetTop;
-    result = "[" + pos_x + "," + pos_y + "]";
-    cx = (pos_x-15) +"px";
-    cy = (pos_y-15)  +"px" ;
-    // alert(result);
-    document.getElementById("cross_"+id).style.left = cx;
-    document.getElementById("cross_"+id).style.top = cy;
-    document.getElementById("cross_"+id).style.visibility = "visible" ;
-    document.getElementById("input_"+id).value =result;
-}
+    ImageInput.prototype = {
+        constructor: ImageInputConstructor,
+        clickHandler: clickHandler
+    };
+
+    return ImageInput;
+
+    function ImageInputConstructor(elementId) {
+        this.el = $('#imageinput_' + elementId);
+        this.crossEl = $('#cross_' + elementId);
+        this.inputEl = $('#input_' + elementId);
+
+        this.el.on('click', this.clickHandler.bind(this));
+    }
+
+    function clickHandler(event) {
+        var offset = this.el.offset(),
+            posX = event.offsetX ?
+                event.offsetX : event.pageX - offset.left,
+            posY = event.offsetY ?
+                event.offsetY : event.pageY - offset.top,
+
+            // To reduce differences between values returned by different kinds
+            // of browsers, we round `posX` and `posY`.
+            //
+            // IE10: `posX` and `posY` - float.
+            // Chrome, FF: `posX` and `posY` - integers.
+            result = '[' + Math.round(posX) + ',' + Math.round(posY) + ']';
+
+        this.crossEl.css({
+            left: posX - 15,
+            top: posY - 15,
+            visibility: 'visible'
+        });
+
+        this.inputEl.val(result);
+    }
+}).call(this, window.jQuery);

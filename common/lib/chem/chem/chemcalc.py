@@ -1,9 +1,10 @@
 from __future__ import division
+
 from fractions import Fraction
 
-from pyparsing import (Literal, StringEnd, OneOrMore, ParseException)
 import nltk
 from nltk.tree import Tree
+from pyparsing import Literal, OneOrMore, ParseException, StringEnd
 
 ARROWS = ('<->', '->')
 
@@ -91,7 +92,7 @@ def _clean_parse_tree(tree):
                 'paren_group_square': lambda x: nltk.tree.Tree(x.node, x[1]),
                 'paren_group_round': lambda x: nltk.tree.Tree(x.node, x[1])}
 
-    if type(tree) == str:
+    if isinstance(tree, str):
         return tree
 
     old_node = None
@@ -124,7 +125,7 @@ def _merge_children(tree, tags):
         # Haven't grokked the code to tell if this is indeed the right thing to do.
         raise ParseException("Shouldn't have empty trees")
 
-    if type(tree) == str:
+    if isinstance(tree, str):
         return tree
 
     merged_children = []
@@ -134,7 +135,7 @@ def _merge_children(tree, tags):
     while not done:
         done = True
         for child in tree:
-            if type(child) == nltk.tree.Tree and child.node == tree.node and tree.node in tags:
+            if isinstance(child, nltk.tree.Tree) and child.node == tree.node and tree.node in tags:
                 merged_children = merged_children + list(child)
                 done = False
             else:
@@ -182,7 +183,7 @@ def _render_to_html(tree):
                 'paren_group_round': round_brackets,
                 'paren_group_square': square_brackets}
 
-    if type(tree) == str:
+    if isinstance(tree, str):
         return tree
     else:
         children = "".join(map(_render_to_html, tree))
@@ -190,7 +191,6 @@ def _render_to_html(tree):
             return dispatch[tree.node](tree, children)
         else:
             return children.replace(' ', '')
-
 
 
 def render_to_html(eq):
@@ -230,7 +230,6 @@ def render_to_html(eq):
     if arrow == '':
         # only one side
         return spanify(render_expression(left))
-
 
     return spanify(render_expression(left) + render_arrow(arrow) + render_expression(right))
 
@@ -341,8 +340,12 @@ def divide_chemical_expression(s1, s2, ignore_state=False):
         if treedic['1 phases'] != treedic['2 phases']:
             return False
 
-    if any(map(lambda x, y: x / y - treedic['1 factors'][0] / treedic['2 factors'][0],
-                                         treedic['1 factors'], treedic['2 factors'])):
+    if any(
+        [
+            x / y - treedic['1 factors'][0] / treedic['2 factors'][0]
+            for (x, y) in zip(treedic['1 factors'], treedic['2 factors'])
+        ]
+    ):
         # factors are not proportional
         return False
     else:

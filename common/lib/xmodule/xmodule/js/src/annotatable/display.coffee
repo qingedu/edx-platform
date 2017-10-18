@@ -12,9 +12,9 @@ class @Annotatable
 
     # these selectors are for responding to events from the annotation capa problem type
     problemXModuleSelector:     '.xmodule_CapaModule'
-    problemSelector:            'section.problem'
-    problemInputSelector:       'section.problem .annotation-input'
-    problemReturnSelector:      'section.problem .annotation-return'
+    problemSelector:            'div.problem'
+    problemInputSelector:       'div.problem .annotation-input'
+    problemReturnSelector:      'div.problem .annotation-return'
 
     constructor: (el) ->
         console.log 'loaded Annotatable' if @_debug
@@ -39,15 +39,15 @@ class @Annotatable
         # the associated problem. The reply buttons are part of the tooltip
         # content. It's important that the tooltips be configured to render
         # as descendants of the annotation module and *not* the document.body.
-        @$el.delegate @replySelector, 'click', @onClickReply
+        @$el.on 'click', @replySelector, @onClickReply
 
         # Initialize handler for 'return to annotation' events triggered from problems.
         #   1) There are annotationinput capa problems rendered on the page
         #   2) Each one has an embedded return link (see annotation capa problem template).
         # Since the capa problem injects HTML content via AJAX, the best we can do is
-        # is let the click events bubble up to the body and handle them there. 
-        $('body').delegate @problemReturnSelector, 'click', @onClickReturn
-  
+        # is let the click events bubble up to the body and handle them there.
+        $(document).on 'click', @problemReturnSelector, @onClickReturn
+
     initTips: () ->
         # tooltips are used to display annotations for highlighted text spans
         @$(@spanSelector).each (index, el) =>
@@ -91,8 +91,9 @@ class @Annotatable
 
     onMoveTip: (event, api, position) =>
         ###
-        This method handles an edge case in which a tooltip is displayed above
-        a non-overlapping span like this:
+        This method handles a vertical positioning bug in Firefox as
+        well as an edge case in which a tooltip is displayed above a
+        non-overlapping span like this:
 
                              (( TOOLTIP ))
                                   \/
@@ -115,28 +116,33 @@ class @Annotatable
             # we want to choose the largest of the two non-overlapping spans and display
             # the tooltip above the center of it (see api.options.position settings)
             focus_rect = (if rects[0].width > rects[1].width then rects[0] else rects[1])
-            rect_center = focus_rect.left + (focus_rect.width / 2)
-            rect_top = focus_rect.top
-            tip_width = $(tip).width()
-            tip_height = $(tip).height()
+        else
+            # always compute the new position because Firefox doesn't
+            # properly vertically position the tooltip
+            focus_rect = rects[0]
 
-            # tooltip is positioned relative to its container, so we need to factor in offsets
-            container_offset = $(container).offset()
-            offset_left = -container_offset.left
-            offset_top = $(document).scrollTop() - container_offset.top
+        rect_center = focus_rect.left + (focus_rect.width / 2)
+        rect_top = focus_rect.top
+        tip_width = $(tip).width()
+        tip_height = $(tip).height()
 
-            tip_left = offset_left + rect_center - (tip_width / 2)
-            tip_top =  offset_top + rect_top - tip_height + adjust_y
+        # tooltip is positioned relative to its container, so we need to factor in offsets
+        container_offset = $(container).offset()
+        offset_left = -container_offset.left
+        offset_top = $(document).scrollTop() - container_offset.top
 
-            # make sure the new tip position doesn't clip the edges of the screen
-            win_width = $(window).width()
-            if tip_left < offset_left
-                tip_left = offset_left
-            else if tip_left + tip_width > win_width + offset_left
-                tip_left = win_width + offset_left - tip_width
+        tip_left = offset_left + rect_center - (tip_width / 2)
+        tip_top =  offset_top + rect_top - tip_height + adjust_y
 
-            # final step: update the position object (used by qtip2 to show the tip after the move event)
-            $.extend position, 'left': tip_left, 'top': tip_top
+        # make sure the new tip position doesn't clip the edges of the screen
+        win_width = $(window).width()
+        if tip_left < offset_left
+            tip_left = offset_left
+        else if tip_left + tip_width > win_width + offset_left
+            tip_left = win_width + offset_left - tip_width
+
+        # final step: update the position object (used by qtip2 to show the tip after the move event)
+        $.extend position, 'left': tip_left, 'top': tip_top
 
     getSpanForProblemReturn: (el) ->
         problem_id = $(@problemReturnSelector).index(el)
@@ -144,7 +150,7 @@ class @Annotatable
 
     getProblem: (el) ->
         problem_id = @getProblemId(el)
-        $(@problemSelector).has(@problemInputSelector).eq(problem_id)
+        $(@problemInputSelector).eq(problem_id)
 
     getProblemId: (el) ->
         $(el).data('problem-id')
@@ -160,7 +166,10 @@ class @Annotatable
         @hideTips visible
 
     toggleAnnotationButtonText: (hide) ->
-        buttonText = (if hide then 'Show' else 'Hide')+' Annotations'
+        if hide
+            buttonText = gettext('Show Annotations')
+        else
+            buttonText = gettext('Hide Annotations')
         @$(@toggleAnnotationsSelector).text(buttonText)
 
     toggleInstructions: () ->
@@ -169,7 +178,10 @@ class @Annotatable
       @toggleInstructionsText hide
 
     toggleInstructionsButton: (hide) ->
-        txt = (if hide then 'Expand' else 'Collapse')+' Instructions'
+        if hide
+            txt = gettext('Expand Instructions')
+        else
+            txt = gettext('Collapse Instructions')
         cls = (if hide then ['expanded', 'collapsed'] else ['collapsed','expanded'])
         @$(@toggleInstructionsSelector).text(txt).removeClass(cls[0]).addClass(cls[1])
 
@@ -202,7 +214,7 @@ class @Annotatable
             onAfter: @_once => after?.call this, el
             offset: offset
         }) if $(el).length > 0
- 
+
     afterScrollToProblem: (problem_el) ->
         problem_el.effect 'highlight', {}, 500
 
@@ -221,13 +233,14 @@ class @Annotatable
     makeTipTitle: (el) ->
         (api) =>
             title = $(el).data('comment-title')
-            (if title then title else 'Commentary')
+            (if title then title else gettext('Commentary'))
 
     createComment: (text) ->
         $("<div class=\"annotatable-comment\">#{text}</div>")
 
     createReplyLink: (problem_id) ->
-        $("<a class=\"annotatable-reply\" href=\"javascript:void(0);\" data-problem-id=\"#{problem_id}\">Reply to Annotation</a>")
+        linktxt = gettext('Reply to Annotation')
+        $("<a class=\"annotatable-reply\" href=\"javascript:void(0);\" data-problem-id=\"#{problem_id}\">#{linktxt}</a>")
 
     findVisibleTips: () ->
         visible = []

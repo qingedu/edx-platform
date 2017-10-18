@@ -1,6 +1,5 @@
 {% extends "wiki/base.html" %}
 {% load wiki_tags i18n %}
-{% load url from future %}
 
 {% block pagetitle %}{{ article.current_revision.title }}{% endblock %}
 
@@ -12,9 +11,9 @@
 
   <div class="article-wrapper">
 
-    <article class="main-article">
+    <article class="main-article" id="main-article">
         {% if selected_tab != "edit" %}
-          <h1>{{ article.current_revision.title }}</h1>
+          <h3 class="entry-title">{{ article.current_revision.title }}</h3>
 
         {% endif %}
 
@@ -34,7 +33,7 @@
 
       {% if urlpath %}
       <div class="see-children">
-        <a href="{% url 'wiki:dir' path=urlpath.path %}">See all children</a>
+        <a href="{% url 'wiki:dir' path=urlpath.path %}">{% trans "See all children" %}</a>
       </div>
       {% endif %}
     </div>

@@ -1,17 +1,17 @@
-import time
+import datetime
 import logging
 import re
+import time
 
-from xblock.core import ModelType
-import datetime
 import dateutil.parser
-
 from pytz import UTC
+from xblock.fields import JSONField
+from xblock.scorable import Score
 
 log = logging.getLogger(__name__)
 
 
-class Date(ModelType):
+class Date(JSONField):
     '''
     Date fields know how to parse and produce json (iso) compatible formats. Converts to tz aware datetimes.
     '''
@@ -19,6 +19,8 @@ class Date(ModelType):
     CURRENT_YEAR = datetime.datetime.now(UTC).year
     PREVENT_DEFAULT_DAY_MON_SEED1 = datetime.datetime(CURRENT_YEAR, 1, 1, tzinfo=UTC)
     PREVENT_DEFAULT_DAY_MON_SEED2 = datetime.datetime(CURRENT_YEAR, 2, 2, tzinfo=UTC)
+
+    MUTABLE = False
 
     def _parse_date_wo_default_month_day(self, field):
         """
@@ -31,7 +33,7 @@ class Date(ModelType):
         result = dateutil.parser.parse(field, default=self.PREVENT_DEFAULT_DAY_MON_SEED1)
         result_other = dateutil.parser.parse(field, default=self.PREVENT_DEFAULT_DAY_MON_SEED2)
         if result != result_other:
-            log.warning("Field {0} is missing month or day".format(self._name, field))
+            log.warning("Field {0} is missing month or day".format(self.name))
             return None
         if result.tzinfo is None:
             result = result.replace(tzinfo=UTC)
@@ -57,7 +59,7 @@ class Date(ModelType):
             return field
         else:
             msg = "Field {0} has bad value '{1}'".format(
-                self._name, field)
+                self.name, field)
             raise TypeError(msg)
 
     def to_json(self, value):
@@ -71,16 +73,26 @@ class Date(ModelType):
             return time.strftime('%Y-%m-%dT%H:%M:%SZ', value)
         elif isinstance(value, datetime.datetime):
             if value.tzinfo is None or value.utcoffset().total_seconds() == 0:
+                if value.year < 1900:
+                    # strftime doesn't work for pre-1900 dates, so use
+                    # isoformat instead
+                    return value.isoformat()
                 # isoformat adds +00:00 rather than Z
                 return value.strftime('%Y-%m-%dT%H:%M:%SZ')
             else:
                 return value.isoformat()
         else:
-            raise TypeError("Cannot convert {} to json".format(value))
+            raise TypeError("Cannot convert {!r} to json".format(value))
+
+    enforce_type = from_json
 
 TIMEDELTA_REGEX = re.compile(r'^((?P<days>\d+?) day(?:s?))?(\s)?((?P<hours>\d+?) hour(?:s?))?(\s)?((?P<minutes>\d+?) minute(?:s)?)?(\s)?((?P<seconds>\d+?) second(?:s)?)?$')
 
-class Timedelta(ModelType):
+
+class Timedelta(JSONField):
+    # Timedeltas are immutable, see http://docs.python.org/2/library/datetime.html#available-types
+    MUTABLE = False
+
     def from_json(self, time_str):
         """
         time_str: A string with the following components:
@@ -93,6 +105,10 @@ class Timedelta(ModelType):
         """
         if time_str is None:
             return None
+
+        if isinstance(time_str, datetime.timedelta):
+            return time_str
+
         parts = TIMEDELTA_REGEX.match(time_str)
         if not parts:
             return
@@ -104,9 +120,181 @@ class Timedelta(ModelType):
         return datetime.timedelta(**time_params)
 
     def to_json(self, value):
+        if value is None:
+            return None
+
         values = []
         for attr in ('days', 'hours', 'minutes', 'seconds'):
             cur_value = getattr(value, attr, 0)
             if cur_value > 0:
                 values.append("%d %s" % (cur_value, attr))
         return ' '.join(values)
+
+    def enforce_type(self, value):
+        """
+        Ensure that when set explicitly the Field is set to a timedelta
+        """
+        if isinstance(value, datetime.timedelta) or value is None:
+            return value
+
+        return self.from_json(value)
+
+
+class RelativeTime(JSONField):
+    """
+    Field for start_time and end_time video module properties.
+
+    It was decided, that python representation of start_time and end_time
+    should be python datetime.timedelta object, to be consistent with
+    common time representation.
+
+    At the same time, serialized representation should be "HH:MM:SS"
+    This format is convenient to use in XML (and it is used now),
+    and also it is used in frond-end studio editor of video module as format
+    for start and end time fields.
+
+    In database we previously had float type for start_time and end_time fields,
+    so we are checking it also.
+
+    Python object of RelativeTime is datetime.timedelta.
+    JSONed representation of RelativeTime is "HH:MM:SS"
+    """
+    # Timedeltas are immutable, see http://docs.python.org/2/library/datetime.html#available-types
+    MUTABLE = False
+
+    @classmethod
+    def isotime_to_timedelta(cls, value):
+        """
+        Validate that value in "HH:MM:SS" format and convert to timedelta.
+
+        Validate that user, that edits XML, sets proper format, and
+         that max value that can be used by user is "23:59:59".
+        """
+        try:
+            obj_time = time.strptime(value, '%H:%M:%S')
+        except ValueError as e:
+            raise ValueError(
+                "Incorrect RelativeTime value {!r} was set in XML or serialized. "
+                "Original parse message is {}".format(value, e.message)
+            )
+        return datetime.timedelta(
+            hours=obj_time.tm_hour,
+            minutes=obj_time.tm_min,
+            seconds=obj_time.tm_sec
+        )
+
+    def from_json(self, value):
+        """
+        Convert value is in 'HH:MM:SS' format to datetime.timedelta.
+
+        If not value, returns 0.
+        If value is float (backward compatibility issue), convert to timedelta.
+        """
+        if not value:
+            return datetime.timedelta(seconds=0)
+
+        if isinstance(value, datetime.timedelta):
+            return value
+
+        # We've seen serialized versions of float in this field
+        if isinstance(value, float):
+            return datetime.timedelta(seconds=value)
+
+        if isinstance(value, basestring):
+            return self.isotime_to_timedelta(value)
+
+        msg = "RelativeTime Field {0} has bad value '{1!r}'".format(self.name, value)
+        raise TypeError(msg)
+
+    def to_json(self, value):
+        """
+        Convert datetime.timedelta to "HH:MM:SS" format.
+
+        If not value, return "00:00:00"
+
+        Backward compatibility: check if value is float, and convert it. No exceptions here.
+
+        If value is not float, but is exceed 23:59:59, raise exception.
+        """
+        if not value:
+            return "00:00:00"
+
+        if isinstance(value, float):  # backward compatibility
+            value = min(value, 86400)
+            return self.timedelta_to_string(datetime.timedelta(seconds=value))
+
+        if isinstance(value, datetime.timedelta):
+            if value.total_seconds() > 86400:  # sanity check
+                raise ValueError(
+                    "RelativeTime max value is 23:59:59=86400.0 seconds, "
+                    "but {} seconds is passed".format(value.total_seconds())
+                )
+            return self.timedelta_to_string(value)
+
+        raise TypeError("RelativeTime: cannot convert {!r} to json".format(value))
+
+    def timedelta_to_string(self, value):
+        """
+        Makes first 'H' in str representation non-optional.
+
+         str(timedelta) has [H]H:MM:SS format, which is not suitable
+         for front-end (and ISO time standard), so we force HH:MM:SS format.
+         """
+        stringified = str(value)
+        if len(stringified) == 7:
+            stringified = '0' + stringified
+        return stringified
+
+    def enforce_type(self, value):
+        """
+        Ensure that when set explicitly the Field is set to a timedelta
+        """
+        if isinstance(value, datetime.timedelta) or value is None:
+            return value
+
+        return self.from_json(value)
+
+
+class ScoreField(JSONField):
+    """
+    Field for blocks that need to store a Score. XBlocks that implement
+    the ScorableXBlockMixin may need to store their score separately
+    from their problem state, specifically for use in staff override
+    of problem scores.
+    """
+    MUTABLE = False
+
+    def from_json(self, value):
+        if value is None:
+            return value
+        if isinstance(value, Score):
+            return value
+
+        if set(value) != {'raw_earned', 'raw_possible'}:
+            raise TypeError('Scores must contain only a raw earned and raw possible value. Got {}'.format(
+                set(value)
+            ))
+
+        raw_earned = value['raw_earned']
+        raw_possible = value['raw_possible']
+
+        if raw_possible < 0:
+            raise ValueError(
+                'Error deserializing field of type {0}: Expected a positive number for raw_possible, got {1}.'.format(
+                    self.display_name,
+                    raw_possible,
+                )
+            )
+
+        if not (0 <= raw_earned <= raw_possible):
+            raise ValueError(
+                'Error deserializing field of type {0}: Expected raw_earned between 0 and {1}, got {2}.'.format(
+                    self.display_name,
+                    raw_possible,
+                    raw_earned
+                )
+            )
+
+        return Score(raw_earned, raw_possible)
+
+    enforce_type = from_json

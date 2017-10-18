@@ -1,71 +1,72 @@
 ## mako
-<%page args="active_page=None" />
+
+<%page args="active_page=None" expression_filter="h" />
+<%namespace name='static' file='/static_content.html'/>
+
+<%!
+from courseware.tabs import get_course_tab_list
+from django.conf import settings
+from django.core.urlresolvers import reverse
+from django.utils.translation import ugettext as _
+%>
 
 <%
 if active_page is None and active_page_context is not UNDEFINED:
-  # If active_page is not passed in as an argument, it may be in the context as active_page_context
-  active_page = active_page_context
+    # If active_page is not passed in as an argument, it may be in the context as active_page_context
+    active_page = active_page_context
 
-def url_class(is_active):
-  if is_active:
-    return "active"
-  return ""
+if course is not None:
+    include_special_exams = settings.FEATURES.get('ENABLE_SPECIAL_EXAMS', False) and (course.enable_proctored_exams or course.enable_timed_exams)
 %>
-<%! from courseware.tabs import get_course_tabs %>
 
-<nav class="${active_page} course-material">
-  <div class="inner-wrapper">
-    <ol class="course-tabs">
-      % for tab in get_course_tabs(user, course, active_page):
-          <li>
-             <a href="${tab.link | h}" class="${url_class(tab.is_active)}">
-                 ${tab.name | h}
-                 % if tab.is_active == True:
-                  <span class="sr">, current location</span>
-                 %endif
-                 % if tab.has_img == True:
-                    <img src="${tab.img}"/>
-                 %endif
-             </a>
-          </li>
-      % endfor
-    <%block name="extratabs" />
-        % if masquerade is not UNDEFINED:
-          % if staff_access and masquerade is not None:
-          <li style="float:right"><a href="#" id="staffstatus">Staff view</a></li>
-          % endif
-        % endif
-    </ol>
-  </div>
-</nav>
-
-% if masquerade is not UNDEFINED:
-  % if staff_access and masquerade is not None:
-<script type="text/javascript">
-masq = (function(){
-    var el = $('#staffstatus');
-    var setstat = function(status){
-        if (status=='student'){
-            el.html('<font color="green">Student view</font>');
-        }else{
-            el.html('<font color="red">Staff view</font>');
-        }
-    }
-    setstat('${masquerade}');
-
-    el.click(function(){
-        $.ajax({ url: '/masquerade/toggle',
-                 type: 'GET',
-                 success: function(result){
-                     setstat(result.status);
-                     location.reload();
-                 },
-                 error: function() {
-                     alert('Error: cannot connect to server');
-                 }
-               });
-    });
-}() );
-</script>
-  % endif
+% if include_special_exams is not UNDEFINED and include_special_exams:
+    <%static:js group='proctoring'/>
+    % for template_name in ["proctored-exam-status"]:
+        <script type="text/template" id="${template_name}-tpl">
+            <%static:include path="courseware/${template_name}.underscore" />
+        </script>
+    % endfor
+    <div class="proctored_exam_status"></div>
 % endif
+
+% if disable_tabs is UNDEFINED or not disable_tabs:
+    <%
+    tab_list = get_course_tab_list(request, course)
+    %>
+    % if uses_bootstrap:
+        <nav class="navbar course-tabs pb-0 navbar-expand-lg">
+            <ul class="navbar-nav mr-auto">
+                % for tab in tab_list:
+                    <%
+                    tab_is_active = tab.tab_id in (active_page, default_tab)
+                    %>
+                    <li class="nav-item ${'active' if tab_is_active else ''}">
+                        <a href="${tab.link_func(course, reverse)}" class="nav-link">
+                            ${_(tab.name)}
+                            % if tab_is_active:
+                                <span class="sr-only">, ${_('current location')}</span>
+                            %endif
+                            % if tab_image:
+                                ## Translators: 'needs attention' is an alternative string for the
+                                ## notification image that indicates the tab "needs attention".
+                                <img src="${tab_image}" alt="${_('needs attention')}" />
+                            %endif
+                        </a>
+                    </li>
+                % endfor
+            </ul>
+        </nav>
+    % else:
+        <nav class="${active_page} wrapper-course-material" aria-label="${_('Course Material')}">
+            <div class="course-material">
+                <%
+                tabs_tmpl = static.get_template_path('/courseware/tabs.html')
+                %>
+                <ol class="tabs course-tabs">
+                    <%include file="${tabs_tmpl}" args="tab_list=tab_list,active_page=active_page,default_tab=default_tab,tab_image=tab_image" />
+                    <%block name="extratabs" />
+                </ol>
+            </div>
+        </nav>
+    % endif
+%endif

@@ -1,8 +1,12 @@
-from xmodule.x_module import XModule
-from xmodule.raw_module import RawDescriptor
+"""
+Template module
+"""
 from lxml import etree
 from mako.template import Template
-from xmodule.modulestore.django import modulestore
+
+import dogstats_wrapper as dog_stats_api
+from xmodule.raw_module import RawDescriptor
+from xmodule.x_module import DEPRECATION_VSCOMPAT_EVENT, XModule
 
 
 class CustomTagModule(XModule):
@@ -34,6 +38,7 @@ class CustomTagModule(XModule):
 class CustomTagDescriptor(RawDescriptor):
     """ Descriptor for custom tags.  Loads the template when created."""
     module_class = CustomTagModule
+    resources_dir = None
     template_dir_name = 'customtag'
 
     def render_template(self, system, xml_data):
@@ -43,6 +48,11 @@ class CustomTagDescriptor(RawDescriptor):
             template_name = xmltree.attrib['impl']
         else:
             # VS[compat]  backwards compatibility with old nested customtag structure
+            dog_stats_api.increment(
+                DEPRECATION_VSCOMPAT_EVENT,
+                tags=["location:customtag_descriptor_render_template"]
+            )
+
             child_impl = xmltree.find('impl')
             if child_impl is not None:
                 template_name = child_impl.text
@@ -56,11 +66,10 @@ class CustomTagDescriptor(RawDescriptor):
         # cdodge: look up the template as a module
         template_loc = self.location.replace(category='custom_tag_template', name=template_name)
 
-        template_module = modulestore().get_instance(system.course_id, template_loc)
+        template_module = system.load_item(template_loc)
         template_module_data = template_module.data
         template = Template(template_module_data)
         return template.render(**params)
-
 
     @property
     def rendered_html(self):

@@ -1,18 +1,13 @@
-# pylint: disable=C0111
-# pylint: disable=W0621
+# pylint: disable=missing-docstring
 
-from lettuce import world
-from .factories import *
-from django.conf import settings
-from django.http import HttpRequest
+import urllib
+
 from django.contrib.auth.models import User
-from django.contrib.auth import authenticate, login
-from django.contrib.auth.middleware import AuthenticationMiddleware
-from django.contrib.sessions.middleware import SessionMiddleware
+from lettuce import world
+
 from student.models import CourseEnrollment
-from xmodule.modulestore.django import modulestore
-from xmodule.contentstore.django import contentstore
-from urllib import quote_plus
+from xmodule.contentstore.django import _CONTENTSTORE
+from xmodule.modulestore.django import clear_existing_modulestores, modulestore
 
 
 @world.absorb
@@ -22,7 +17,7 @@ def create_user(uname, password):
     if len(User.objects.filter(username=uname)) > 0:
         return
 
-    portal_user = UserFactory.build(username=uname, email=uname + '@edx.org')
+    portal_user = world.UserFactory.build(username=uname, email=uname + '@edx.org')
     portal_user.set_password(password)
     portal_user.save()
 
@@ -30,57 +25,53 @@ def create_user(uname, password):
     registration.register(portal_user)
     registration.activate()
 
-    user_profile = world.UserProfileFactory(user=portal_user)
+    world.UserProfileFactory(user=portal_user)
 
 
 @world.absorb
-def log_in(username, password):
+def log_in(username='robot', password='test', email='robot@edx.org', name="Robot"):
     """
-    Log the user in programatically.
-    This will delete any existing cookies to ensure that the user
-    logs in to the correct session.
+    Use the auto_auth feature to programmatically log the user in
     """
+    url = '/auto_auth'
+    params = {'username': username, 'password': password, 'email': email, 'full_name': name}
+    url += "?" + urllib.urlencode(params)
+    world.visit(url)
 
-    # Authenticate the user
-    world.scenario_dict['USER'] = authenticate(username=username, password=password)
-    assert(world.scenario_dict['USER'] is not None and world.scenario_dict['USER'].is_active)
-
-    # Send a fake HttpRequest to log the user in
-    # We need to process the request using
-    # Session middleware and Authentication middleware
-    # to ensure that session state can be stored
-    request = HttpRequest()
-    SessionMiddleware().process_request(request)
-    AuthenticationMiddleware().process_request(request)
-    login(request, world.scenario_dict['USER'])
-
-    # Save the session
-    request.session.save()
-
-    # Retrieve the sessionid and add it to the browser's cookies
-    cookie_dict = {settings.SESSION_COOKIE_NAME: request.session.session_key}
-    world.browser.cookies.delete()
-    world.browser.cookies.add(cookie_dict)
+    # Save the user info in the world scenario_dict for use in the tests
+    user = User.objects.get(username=username)
+    world.scenario_dict['USER'] = user
 
 
 @world.absorb
-def register_by_course_id(course_id, is_staff=False):
-    create_user('robot')
-    u = User.objects.get(username='robot')
+def register_by_course_key(course_key, username='robot', password='test', is_staff=False):
+    create_user(username, password)
+    user = User.objects.get(username=username)
+    # Note: this flag makes the user global staff - that is, an edX employee - not a course staff.
+    # See courseware.tests.factories for StaffFactory and InstructorFactory.
     if is_staff:
-        u.is_staff = True
-        u.save()
-    CourseEnrollment.objects.get_or_create(user=u, course_id=course_id)
+        user.is_staff = True
+        user.save()
+    CourseEnrollment.enroll(user, course_key)
+
+
+@world.absorb
+def enroll_user(user, course_key):
+    # Activate user
+    registration = world.RegistrationFactory(user=user)
+    registration.register(user)
+    registration.activate()
+    # Enroll them in the course
+    CourseEnrollment.enroll(user, course_key)
 
 
 @world.absorb
 def clear_courses():
     # Flush and initialize the module store
-    # It needs the templates because it creates new records
-    # by cloning from the template.
     # Note that if your test module gets in some weird state
     # (though it shouldn't), do this manually
     # from the bash shell to drop it:
     # $ mongo test_xmodule --eval "db.dropDatabase()"
-    modulestore().collection.drop()
-    contentstore().fs_files.drop()
+    modulestore()._drop_database()  # pylint: disable=protected-access
+    _CONTENTSTORE.clear()
+    clear_existing_modulestores()

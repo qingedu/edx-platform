@@ -1,483 +1,278 @@
-<%!
-  from django.core.urlresolvers import reverse
-  from courseware.courses import course_image_url, get_course_about_section
-  from courseware.access import has_access
-  from certificates.models import CertificateStatuses
-%>
+<%page expression_filter="h"/>
 <%inherit file="main.html" />
-
+<%def name="online_help_token()"><% return "learnerdashboard" %></%def>
 <%namespace name='static' file='static_content.html'/>
+<%!
+from django.core.urlresolvers import reverse
+from django.utils.translation import ugettext as _
+from django.template import RequestContext
+import third_party_auth
+from third_party_auth import pipeline
+from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
+from openedx.core.djangolib.js_utils import dump_js_escaped_json, js_escaped_string
+from openedx.core.djangolib.markup import HTML, Text
+%>
 
-<%block name="title"><title>Dashboard</title></%block>
-
-<%block name="js_extra">
-  <script type="text/javascript">
-  (function() {
-
-    var carouselPageHeight = 0;
-    var carouselIndex = 0;
-    var carouselDelay = 5000;
-    var carouselPages = $('.news-carousel .page').length;
+<%
+  cert_name_short = settings.CERT_NAME_SHORT
+  cert_name_long = settings.CERT_NAME_LONG
+%>
 
 
-    $('.news-carousel .page').each(function() {
-      carouselPageHeight = Math.max($(this).outerHeight(), carouselPageHeight);
-    });
-    $('.news-carousel .pages').css('height', carouselPageHeight);
-    $('.news-carousel .page-dot').bind('click', setCarouselPage);
-    var carouselTimer = setInterval(nextCarouselPage, carouselDelay);
+<%block name="pagetitle">${_("Dashboard")}</%block>
+<%block name="bodyclass">view-dashboard is-authenticated</%block>
 
-    function nextCarouselPage() {
-      carouselIndex = carouselIndex + 1 < carouselPages ? carouselIndex + 1 : 0;
-      setCarouselPage(null, carouselIndex);
-    }
-
-    function setCarouselPage(event, index) {
-      var $pageToShow;
-      var transitionSpeed;
-      $('.news-carousel .page-dots').find('.current').removeClass('current');
-
-      if(event) {
-        clearInterval(carouselTimer);
-        carouselTimer = setInterval(nextCarouselPage, carouselDelay);
-        carouselIndex = $(this).closest('li').index();
-        transitionSpeed = 250;
-        $pageToShow = $('.news-carousel .page').eq(carouselIndex);
-        $(this).addClass('current');
-      } else {
-        transitionSpeed = 750;
-        $pageToShow = $('.news-carousel .page').eq(index);
-        $('.news-carousel .page-dot').eq(index).addClass('current');
-      }
-
-      $pageToShow.fadeIn(transitionSpeed);
-      $('.news-carousel .page').not($pageToShow).fadeOut(transitionSpeed);
-    }
-
-    $(".unenroll").click(function(event) {
-      $("#unenroll_course_id").val( $(event.target).data("course-id") );
-      $("#unenroll_course_number").text( $(event.target).data("course-number") );
-    });
-
-    $('#unenroll_form').on('ajax:complete', function(event, xhr) {
-      if(xhr.status == 200) {
-        location.href = "${reverse('dashboard')}";
-      } else if (xhr.status == 403) {
-        location.href = "${reverse('signin_user')}?course_id=" +
-          $("#unenroll_course_id").val() + "&enrollment_action=unenroll";
-      } else {
-        $('#unenroll_error').html(
-          xhr.responseText ? xhr.responseText : "An error occurred. Please try again later."
-        ).stop().css("display", "block");
-      }
-    });
-
-    $('#pwd_reset_button').click(function() {
-      $.post('${reverse("password_reset")}',
-             {"email"  : $('#id_email').val()},
-             function(data){
-               $("#password_reset_complete_link").click();
-             });
-    });
-
-    $("#change_email_form").submit(function(){
-      var new_email = $('#new_email_field').val();
-      var new_password = $('#new_email_password').val();
-
-      $.post('${reverse("change_email")}',
-               {"new_email" : new_email, "password" : new_password},
-               function(data) {
-                 if (data.success) {
-                   $("#change_email_title").html("Please verify your new email");
-                   $("#change_email_form").html("<p>You'll receive a confirmation in your " +
-                                                "in-box. Please click the link in the " +
-                                                "email to confirm the email change.</p>");
-                 } else {
-                   $("#change_email_error").html(data.error).stop().css("display", "block");
-                 }
-               });
-      return false;
-    });
-
-    $("#change_name_form").submit(function(){
-      var new_name = $('#new_name_field').val();
-      var rationale = $('#name_rationale_field').val();
-
-      $.post('${reverse("change_name")}',
-             {"new_name":new_name, "rationale":rationale},
-             function(data) {
-               if(data.success) {
-                 location.reload();
-                 // $("#change_name_body").html("<p>Name changed.</p>");
-               } else {
-                 $("#change_name_error").html(data.error).stop().css("display", "block");
-               }
-             });
-       return false;
-    });
-
-  })(this)
-  </script>
+<%block name="header_extras">
+% for template_name in ["donation"]:
+<script type="text/template" id="${template_name}-tpl">
+  <%static:include path="dashboard/${template_name}.underscore" />
+</script>
+% endfor
 </%block>
 
-<section class="container dashboard">
+<%block name="js_extra">
+  <script src="${static.url('js/commerce/credit.js')}"></script>
+  <%static:js group='dashboard'/>
+  <script type="text/javascript">
+    $(document).ready(function() {
+      edx.dashboard.legacy.init({
+        dashboard: "${reverse('dashboard') | n, js_escaped_string}",
+        signInUser: "${reverse('signin_user') | n, js_escaped_string}",
+        changeEmailSettings: "${reverse('change_email_settings') | n, js_escaped_string}"
+      });
+    });
+  </script>
+  <%static:require_module module_name="js/learner_dashboard/unenrollment_factory" class_name="UnenrollmentFactory">
+    UnenrollmentFactory({
+      urls: {
+        dashboard: "${reverse('dashboard') | n, js_escaped_string}",
+        signInUser: "${reverse('signin_user') | n, js_escaped_string}",
+        changeEmailSettings: "${reverse('change_email_settings') | n, js_escaped_string}",
+        browseCourses: "${marketing_link('COURSES') | n, js_escaped_string}"
+      },
+      isEdx: false
+    });
+  </%static:require_module>
+  % if settings.FEATURES.get('ENABLE_DASHBOARD_SEARCH'):
+    <%static:require_module module_name="course_search/js/dashboard_search_factory" class_name="DashboardSearchFactory">
+        DashboardSearchFactory();
+    </%static:require_module>
+  % endif
+  % if redirect_message:
+    <%static:require_module module_name="js/views/message_banner" class_name="MessageBannerView">
+        var banner = new MessageBannerView({urgency: 'low', type: 'warning'});
+        $('#content').prepend(banner.$el);
+        banner.showMessage(${redirect_message | n, dump_js_escaped_json})
+    </%static:require_module>
+  % endif
+</%block>
 
-  %if message:
-    <section class="dashboard-banner">
-      ${message}
-    </section>
-  %endif
+<div class="dashboard-notifications" tabindex="-1">
 
-  <section class="profile-sidebar">
-    <header class="profile">
-      <h1 class="user-name">${ user.username }</h1>
-    </header>
-    <section class="user-info">
-      <ul>
-        <li>
-          <span class="title"><div class="icon name-icon"></div>Full Name (<a href="#apply_name_change" rel="leanModal" class="edit-name">edit</a>)</span> <span class="data">${ user.profile.name | h }</span>
-        </li>
-        <li>
-          <span class="title"><div class="icon email-icon"></div>Email
-            % if external_auth_map is None or 'shib' not in external_auth_map.external_domain:
-            (<a href="#change_email" rel="leanModal" class="edit-email">edit</a>)
-            % endif
-          </span> <span class="data">${ user.email | h }</span>
-        </li>
+    %if banner_account_activation_message:
+        <div class="dashboard-banner">
+            ${banner_account_activation_message | n, decode.utf8}
+        </div>
+    %endif
 
-        % if external_auth_map is None or 'shib' not in external_auth_map.external_domain:
-        <li>
-          <span class="title"><a href="#password_reset_complete" rel="leanModal" id="pwd_reset_button">Reset Password</a></span>
-          <form id="password_reset_form" method="post" data-remote="true" action="${reverse('password_reset')}">
-            <input id="id_email" type="hidden" name="email" maxlength="75" value="${user.email}" />
-            <!-- <input type="submit" id="pwd_reset_button" value="Reset Password" /> -->
-          </form>
-        </li>
+    %if enrollment_message:
+        <div class="dashboard-banner">
+            ${enrollment_message | n,  decode.utf8}
+        </div>
+    %endif
+
+    %if enterprise_message:
+        <div class="dashboard-banner">
+            ${ enterprise_message | n, decode.utf8 }
+        </div>
+    %endif
+
+    %if account_activation_messages:
+      <div class="activation-message-container">
+        % for account_activation_message in account_activation_messages:
+          <div class="account-activation ${account_activation_message.tags}" role="alert" aria-label="Account Activation Message" tabindex="-1">
+            <div class="message-copy" >
+              ${ account_activation_message | n, decode.utf8 }
+            </div>
+          </div>
+        % endfor
+      </div>
+    %endif
+
+</div>
+
+<main id="main" aria-label="Content" tabindex="-1">
+    <div class="container dashboard" id="dashboard-main">
+      <div class="my-courses" id="my-courses">
+        <%include file="learner_dashboard/_dashboard_navigation_courses.html"/>
+
+        % if len(course_enrollments) > 0:
+          <ul class="listing-courses">
+          <%
+              share_settings = configuration_helpers.get_value(
+                  'SOCIAL_SHARING_SETTINGS',
+                  getattr(settings, 'SOCIAL_SHARING_SETTINGS', {})
+              )
+          %>
+          % for dashboard_index, enrollment in enumerate(course_enrollments):
+            <% show_courseware_link = (enrollment.course_id in show_courseware_links_for) %>
+            <% cert_status = cert_statuses.get(enrollment.course_id) %>
+            <% can_unenroll = (not cert_status) or cert_status.get('can_unenroll') %>
+            <% credit_status = credit_statuses.get(enrollment.course_id) %>
+            <% show_email_settings = (enrollment.course_id in show_email_settings_for) %>
+            <% course_mode_info = all_course_modes.get(enrollment.course_id) %>
+            <% is_paid_course = (enrollment.course_id in enrolled_courses_either_paid) %>
+            <% is_course_blocked = (enrollment.course_id in block_courses) %>
+            <% course_verification_status = verification_status_by_course.get(enrollment.course_id, {}) %>
+            <% course_requirements = courses_requirements_not_met.get(enrollment.course_id) %>
+            <% related_programs = inverted_programs.get(unicode(enrollment.course_id)) %>
+            <%include file='dashboard/_dashboard_course_listing.html' args='course_overview=enrollment.course_overview, enrollment=enrollment, show_courseware_link=show_courseware_link, cert_status=cert_status, can_unenroll=can_unenroll, credit_status=credit_status, show_email_settings=show_email_settings, course_mode_info=course_mode_info, is_paid_course=is_paid_course, is_course_blocked=is_course_blocked, verification_status=course_verification_status, course_requirements=course_requirements, dashboard_index=dashboard_index, share_settings=share_settings, user=user, related_programs=related_programs, display_course_modes_on_dashboard=display_course_modes_on_dashboard' />
+          % endfor
+
+          </ul>
+        % else:
+          <div class="empty-dashboard-message">
+            <p>${_("You are not enrolled in any courses yet.")}</p>
+
+            % if settings.FEATURES.get('COURSES_ARE_BROWSABLE'):
+              <a href="${marketing_link('COURSES')}">
+                ${_("Explore courses")}
+              </a>
+
+            %endif
+        </div>
         % endif
 
-      </ul>
-    </section>
+        % if staff_access and len(errored_courses) > 0:
+          <div id="course-errors">
+            <h2>${_("Course-loading errors")}</h2>
 
-    ## `news` should be `None` whenever a non-edX theme is enabled:
-    ## see common/djangoapps/student/views.py#_get_news
-    %if news:
-    <article class="news-carousel">
-      <header>
-        <h4>edX News</h4>
-        <nav class="page-dots">
-          <ol>
-            <li><a href="#" class="page-dot current"></a></li>
-            <li><a href="#" class="page-dot"></a></li>
-            <li><a href="#" class="page-dot"></a></li>
-          </ol>
-        </nav>
-      </header>
-      <div class="pages">
-        % for entry in news:
-        <section class="page">
-          %if entry.image:
-          <div class="news-image">
-            <a href="${entry.link}"><img src="${entry.image}" /></a>
+          % for course_dir, errors in errored_courses.items():
+             <h3>${course_dir}</h3>
+                 <ul>
+               % for (msg, err) in errors:
+                   <li>${msg}
+                     <ul><li><pre>${err}</pre></li></ul>
+                   </li>
+               % endfor
+                 </ul>
+          % endfor
           </div>
-          %endif
-          <h5><a href="${entry.link}">${entry.title}</a></h5>
-          <div class="excerpt">
-            %if entry.summary:
-            <p>${entry.summary}</p>
-            %endif
-            <p><a href="${entry.link}">Learn More ›</a></p>
-          </div>
-        </section>
-        %endfor
-      </div>
-    </article>
-    %endif
-  </section>
+        % endif
+    </div>
 
-  <section class="my-courses">
-    <header>
-      <h2>Current Courses</h2>
-    </header>
+      %if sidebar_account_activation_message:
+        <div class="sidebar-notification">
+          ${sidebar_account_activation_message | n, decode.utf8}
+        </div>
+      %endif
 
-    % if len(courses) > 0:
-      % for course in courses:
-
-        <article class="my-course">
-          <%
-            course_target = reverse('info', args=[course.id])
-          %>
-
-
-
-          % if course.id in show_courseware_links_for:
-            <a href="${course_target}" class="cover">
-              <img src="${course_image_url(course)}" alt="${course.number} ${course.display_name_with_default} Cover Image" />
-            </a>
-          % else:
-            <div class="cover">
-              <img src="${course_image_url(course)}" alt="${course.number} ${course.display_name_with_default} Cover Image" />
+      % if settings.FEATURES.get('ENABLE_DASHBOARD_SEARCH'):
+        <div id="dashboard-search-bar" class="search-bar dashboard-search-bar" role="search" aria-label="Dashboard">
+          <form class="search-form">
+            <label for="dashboard-search-input">${_('Search Your Courses')}</label>
+            <div class="search-field-wrapper">
+              <input id="dashboard-search-input" type="text" class="search-field"/>
+              <button type="submit" class="search-button" title="${_('Search')}">
+                <span class="icon fa fa-search" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="cancel-button" title="${_('Clear search')}">
+                <span class="icon fa fa-remove" aria-hidden="true"></span>
+              </button>
             </div>
-          % endif
+          </form>
+        </div>
+      % endif
 
-          <section class="info">
-            <hgroup>
-              <p class="date-block">
-              % if course.has_ended():
-              Course Completed - ${course.end_date_text}
-              % elif course.has_started():
-              Course Started - ${course.start_date_text}
-              % else:   # hasn't started yet
-              Course Starts - ${course.start_date_text}
+      % if settings.FEATURES.get('ENABLE_DASHBOARD_SEARCH'):
+        <div id="dashboard-search-results" class="search-results dashboard-search-results"></div>
+      % endif
+
+      % if display_sidebar_on_dashboard:
+        <div class="profile-sidebar" id="profile-sidebar" role="region" aria-label="Account Status Info">
+          <header class="profile">
+            <h2 class="account-status-title sr">${_("Account Status Info")}: </h2>
+          </header>
+          <div class="user-info">
+            <ul>
+
+              % if len(order_history_list):
+              <li class="order-history">
+                <span class="title">${_("Order History")}</span>
+                % for order_history_item in order_history_list:
+                  <span><a href="${order_history_item['receipt_url']}" target="_blank" class="edit-name">${order_history_item['order_date']}</a></span>
+                % endfor
+              </li>
               % endif
-              </p>
-              <h2 class="university">${get_course_about_section(course, 'university')}</h2>
-              <h3>
-                % if course.id in show_courseware_links_for:
-                  <a href="${course_target}">${course.number} ${course.display_name_with_default}</a>
-                % else:
-                  <span>${course.number} ${course.display_name_with_default}</span>
-                % endif
-              </h3>
-            </hgroup>
 
-            <%
-                testcenter_exam_info = course.current_test_center_exam
-                registration = exam_registrations.get(course.id)
-                testcenter_register_target = reverse('begin_exam_registration', args=[course.id])
-            %>
-            % if testcenter_exam_info is not None:
+              <%include file="${static.get_template_path('dashboard/_dashboard_status_verification.html')}" />
 
-                % if registration is None and testcenter_exam_info.is_registering():
-                <div class="message message-status is-shown exam-register">
-                  <a href="${testcenter_register_target}" class="button exam-button" id="exam_register_button">Register for Pearson exam</a>
-                  <p class="message-copy">Registration for the Pearson exam is now open and will close on <strong>${testcenter_exam_info.registration_end_date_text}</strong></p>
-                </div>
-                % endif
-                <!-- display a registration for a current exam, even if the registration period is over -->
-                % if registration is not None:
-                    % if registration.is_accepted:
-                <div class="message message-status is-shown exam-schedule">
-                   <a href="${registration.registration_signup_url}" class="button exam-button">Schedule Pearson exam</a>
-                   <p class="exam-registration-number"><a href="${testcenter_register_target}" id="exam_register_link">Registration</a> number: <strong>${registration.client_candidate_id}</strong></p>
-                   <p class="message-copy">Write this down! You’ll need it to schedule your exam.</p>
-                </div>
-                    % endif
-                    % if  registration.is_rejected:
-                <div class="message message-status is-shown exam-schedule">
-                  <p class="message-copy"><strong>Your registration for the Pearson exam has been rejected. Please <a href="${testcenter_register_target}" id="exam_register_link">see your registration status details</a></strong>. Otherwise <a class="contact-link" href="mailto:exam-help@edx.org?subject=Pearson VUE Exam - ${get_course_about_section(course, 'university')} ${course.number}">contact edX at exam-help@edx.org</a> for further help.</p>
-                </div>
-                    % endif
-                   	% if not registration.is_accepted and not registration.is_rejected:
-	            <div class="message message-status is-shown">
-    	              <p class="message-copy"><strong>Your <a href="${testcenter_register_target}" id="exam_register_link">registration for the Pearson exam</a> is pending</strong>. Within a few days, you should see a confirmation number here, which can be used to schedule your exam.</p>
-                </div>
-                    % endif
-                % endif
-            % endif
+            </ul>
+          </div>
+        </div>
+      % endif
+    </div>
+</main>
 
-            <%
-            cert_status = cert_statuses.get(course.id)
-            %>
-            % if course.has_ended() and cert_status:
-                <%
-                if cert_status['status'] == 'generating':
-                    status_css_class = 'course-status-certrendering'
-                elif cert_status['status'] == 'ready':
-                    status_css_class = 'course-status-certavailable'
-                elif cert_status['status'] == 'notpassing':
-                    status_css_class = 'course-status-certnotavailable'
-                else:
-                    status_css_class = 'course-status-processing'
-                %>
-                <div class="message message-status ${status_css_class} is-shown">
+<div id="email-settings-modal" class="modal" aria-hidden="true">
+  <div class="inner-wrapper" role="dialog" aria-labelledby="email-settings-title">
+    <button class="close-modal">
+      <span class="icon fa fa-remove" aria-hidden="true"></span>
+      <span class="sr">
+        ## Translators: this is a control to allow users to exit out of this modal interface (a menu or piece of UI that takes the full focus of the screen)
+        ${_("Close")}
+      </span>
+    </button>
 
-                % if cert_status['status'] == 'processing':
-                      <p class="message-copy">Final course details are being wrapped up at
-                      this time. Your final standing will be available shortly.</p>
-                % elif cert_status['status'] in ('generating', 'ready', 'notpassing', 'restricted'):
-                      <p class="message-copy">Your final grade:
-                      <span class="grade-value">${"{0:.0f}%".format(float(cert_status['grade'])*100)}</span>.
-                      % if cert_status['status'] == 'notpassing':
-                         Grade required for a certificate: <span class="grade-value">
-                           ${"{0:.0f}%".format(float(course.lowest_passing_grade)*100)}</span>.
-                      % elif cert_status['status'] == 'restricted':
-                          <p class="message-copy">
-                          Your certificate is being held pending confirmation that the issuance of your certificate is in compliance with strict U.S. embargoes on Iran, Cuba, Syria and Sudan. If you think our system has mistakenly identified you as being connected with one of those countries, please let us know by contacting <a class="contact-link" href="mailto:${settings.CONTACT_EMAIL}">${settings.CONTACT_EMAIL}</a>.
-                          </p>
-                      % endif
-                      </p>
-                % endif
-
-                % if cert_status['show_disabled_download_button'] or cert_status['show_download_url'] or cert_status['show_survey_button']:
-                  <ul class="actions">
-                    % if cert_status['show_disabled_download_button']:
-                      <li class="action"><span class="disabled">
-                          Your Certificate is Generating</span></li>
-                    % elif cert_status['show_download_url']:
-                      <li class="action">
-                      <a class="btn" href="${cert_status['download_url']}"
-                         title="This link will open/download a PDF document">
-                         Download Your PDF Certificate</a></li>
-                    % endif
-
-                    % if cert_status['show_survey_button']:
-                      <li class="action"><a class="cta" href="${cert_status['survey_url']}">
-                             Complete our course feedback survey</a></li>
-                    % endif
-                  </ul>
-                % endif
-                </div>
-
-            % endif
-
-            % if course.id in show_courseware_links_for:
-              % if course.has_ended():
-                <a href="${course_target}" class="enter-course archived">View Archived Course</a>
-              % else:
-                <a href="${course_target}" class="enter-course">View Course</a>
-              % endif
-            % endif
-            <a href="#unenroll-modal" class="unenroll" rel="leanModal" data-course-id="${course.id}" data-course-number="${course.number}">Unregister</a>
-          </section>
-        </article>
-
-
-
-      % endfor
-    % else:
-      <section class="empty-dashboard-message">
-        <p>Looks like you haven't registered for any courses yet.</p>
-        <a href="${marketing_link('COURSES')}">
-            Find courses now!
-        </a>
-      </section>
-    % endif
-
-    % if staff_access and len(errored_courses) > 0:
-      <div id="course-errors">
-        <h2>Course-loading errors</h2>
-
-      % for course_dir, errors in errored_courses.items():
-         <h3>${course_dir | h}</h3>
-             <ul>
-           % for (msg, err) in errors:
-               <li>${msg}
-                 <ul><li><pre>${err}</pre></li></ul>
-               </li>
-           % endfor
-             </ul>
-      % endfor
-    % endif
-  </section>
-</section>
-
-<section id="unenroll-modal" class="modal unenroll-modal">
-  <div class="inner-wrapper">
     <header>
-      <h2>Are you sure you want to unregister from <span id="unenroll_course_number"></span>?</h2>
+      <h2 id="email-settings-title">
+        ${Text(_("Email Settings for {course_number}")).format(course_number=HTML('<span id="email_settings_course_number"></span>'))}
+        <span class="sr">,
+          ## Translators: this text gives status on if the modal interface (a menu or piece of UI that takes the full focus of the screen) is open or not
+          ${_("window open")}
+        </span>
+      </h2>
       <hr/>
     </header>
 
-    <div id="unenroll_error" class="modal-form-error"></div>
+    <form id="email_settings_form" method="post">
+      <input name="course_id" id="email_settings_course_id" type="hidden" />
+      <label>${_("Receive course emails")} <input type="checkbox" id="receive_emails" name="receive_emails" /></label>
+      <div class="submit">
+        <input type="submit" id="submit" value="${_("Save Settings")}" />
+      </div>
+    </form>
+  </div>
+</div>
 
+<div id="unenroll-modal" class="modal unenroll-modal" aria-hidden="true">
+  <div class="inner-wrapper" role="dialog" aria-labelledby="unenrollment-modal-title">
+    <button class="close-modal">
+      <span class="icon fa fa-remove" aria-hidden="true"></span>
+      <span class="sr">
+        ## Translators: this is a control to allow users to exit out of this modal interface (a menu or piece of UI that takes the full focus of the screen)
+        ${_("Close")}
+      </span>
+    </button>
+
+    <header class="unenroll-header">
+      <h2 id="unenrollment-modal-title">
+        <span id='track-info'></span>
+        <span id='refund-info'></span>
+        <span class="sr">,
+          ## Translators: this text gives status on if the modal interface (a menu or piece of UI that takes the full focus of the screen) is open or not
+          ${_("window open")}
+        </span>
+      </h2>
+      <hr/>
+    </header>
+    <div id="unenroll_error" class="modal-form-error"></div>
     <form id="unenroll_form" method="post" data-remote="true" action="${reverse('change_enrollment')}">
       <input name="course_id" id="unenroll_course_id" type="hidden" />
       <input name="enrollment_action" type="hidden" value="unenroll" />
       <div class="submit">
-        <input name="submit" type="submit" value="Unregister" />
+        <input name="submit" type="submit" value="${_("Unenroll")}" />
       </div>
     </form>
-
-    <div class="close-modal">
-      <div class="inner">
-        <p>&#10005;</p>
-      </div>
-    </div>
   </div>
-</section>
-
-<section id="password_reset_complete" class="modal">
-  <div class="inner-wrapper">
-    <header>
-      <h2>Password Reset Email Sent</h2>
-      <hr/>
-    </header>
-    <div>
-      <form> <!-- Here for styling reasons -->
-        <section>
-          <p>An email has been sent to ${user.email}. Follow the link in the email to change your password.</p>
-        </section>
-      </form>
-    </div>
-    <div class="close-modal">
-      <div class="inner">
-        <p>&#10005;</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="change_email" class="modal">
-  <div class="inner-wrapper">
-    <header>
-      <h2><span id="change_email_title">Change Email</span></h2>
-      <hr/>
-    </header>
-    <div id="change_email_body">
-      <form id="change_email_form">
-        <div id="change_email_error" class="modal-form-error"> </div>
-        <fieldset>
-          <div class="input-group">
-            <label>Please enter your new email address:</label>
-            <input id="new_email_field" type="email" value="" />
-            <label>Please confirm your password:</label>
-            <input id="new_email_password" value="" type="password" />
-          </div>
-          <section>
-            <p>We will send a confirmation to both ${user.email} and your new email as part of the process.</p>
-          </section>
-          <div class="submit">
-            <input type="submit" id="submit_email_change" value="Change Email"/>
-          </div>
-        </fieldset>
-      </form>
-    </div>
-    <div class="close-modal">
-      <div class="inner">
-        <p>&#10005;</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="apply_name_change" class="modal">
-  <div class="inner-wrapper">
-    <header>
-      <h2>Change your name</h2>
-      <hr/>
-    </header>
-    <div id="change_name_body">
-      <form id="change_name_form">
-        <div id="change_name_error" class="modal-form-error"> </div>
-        <p>To uphold the credibility of ${settings.PLATFORM_NAME} certificates, all name changes will be logged and recorded.</p>
-        <br/>
-        <fieldset>
-          <div class="input-group">
-            <label>Enter your desired full name, as it will appear on the ${settings.PLATFORM_NAME} certificates: </label>
-            <input id="new_name_field" value="" type="text" />
-            <label>Reason for name change:</label>
-            <textarea id="name_rationale_field" value=""></textarea>
-          </div>
-          <div class="submit">
-            <input type="submit" id="submit" value="Change My Name">
-          </div>
-        </fieldset>
-      </form>
-    </div>
-    <div class="close-modal">
-      <div class="inner">
-        <p>&#10005;</p>
-      </div>
-    </div>
-  </div>
-</section>
+</div>

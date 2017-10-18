@@ -3,13 +3,15 @@
 # List of valid templates is explicitly managed for (short-term)
 # security reasons.
 
-from mitxmako.shortcuts import render_to_response, render_to_string
-from mako.exceptions import TopLevelLookupException
-from django.shortcuts import redirect
-from django.conf import settings
-from django.http import HttpResponseNotFound, HttpResponseServerError, Http404
-from django_future.csrf import ensure_csrf_cookie
+import mimetypes
 
+from django.conf import settings
+from django.http import Http404, HttpResponseNotFound, HttpResponseServerError
+from django.shortcuts import redirect
+from django.views.decorators.csrf import ensure_csrf_cookie
+from mako.exceptions import TopLevelLookupException
+
+from edxmako.shortcuts import render_to_response, render_to_string
 from util.cache import cache_if_anonymous
 
 valid_templates = []
@@ -30,7 +32,7 @@ def index(request, template):
 
 
 @ensure_csrf_cookie
-@cache_if_anonymous
+@cache_if_anonymous()
 def render(request, template):
     """
     This view function renders the template sent without checking that it
@@ -39,11 +41,22 @@ def render(request, template):
 
     url(r'^jobs$', 'static_template_view.views.render', {'template': 'jobs.html'}, name="jobs")
     """
-    return render_to_response('static_templates/' + template, {})
+
+    # Guess content type from file extension
+    content_type, __ = mimetypes.guess_type(template)
+
+    try:
+        context = {}
+        # This is necessary for the dialog presented with the TOS in /register
+        if template == 'honor.html':
+            context['allow_iframing'] = True
+        return render_to_response('static_templates/' + template, context, content_type=content_type)
+    except TopLevelLookupException:
+        raise Http404
 
 
 @ensure_csrf_cookie
-@cache_if_anonymous
+@cache_if_anonymous()
 def render_press_release(request, slug):
     """
     Render a press release given a slug.  Similar to the "render" function above,
@@ -62,8 +75,8 @@ def render_press_release(request, slug):
 
 
 def render_404(request):
-    return HttpResponseNotFound(render_to_string('static_templates/404.html', {}))
+    return HttpResponseNotFound(render_to_string('static_templates/404.html', {}, request=request))
 
 
 def render_500(request):
-    return HttpResponseServerError(render_to_string('static_templates/server-error.html', {}))
+    return HttpResponseServerError(render_to_string('static_templates/server-error.html', {}, request=request))

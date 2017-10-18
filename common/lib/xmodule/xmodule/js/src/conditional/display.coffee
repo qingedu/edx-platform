@@ -11,7 +11,8 @@ class @Conditional
         return
 
     @url = @el.data('url')
-    @render(element)
+    if @url
+      @render(element)
 
   render: (element) ->
       $.postWithPrefix "#{@url}/conditional_get", (response) =>
@@ -22,14 +23,16 @@ class @Conditional
         parentId = parentEl.attr 'id'
 
         if response.message is false
-          if parentId.indexOf('vert') is 0
+          if parentEl.hasClass('vert')
             parentEl.hide()
           else
             $(element).hide()
         else
-          if parentId.indexOf('vert') is 0
+          if parentEl.hasClass('vert')
             parentEl.show()
           else
             $(element).show()
 
-        XModule.loadModules @el
+        # The children are rendered with a new request, so they have a different request-token.
+        # Use that token instead of @requestToken by simply not passing a token into initializeBlocks.
+        XBlock.initializeBlocks(@el)

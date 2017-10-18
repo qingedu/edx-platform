@@ -1,18 +1,26 @@
-$border-color: #C8C8C8;
+$seq-nav-border-color: $border-color !default;
+$seq-nav-hover-color: rgb(245, 245, 245) !default;
+$seq-nav-link-color: $link-color !default;
+$seq-nav-icon-color: rgb(10, 10, 10) !default;
+$seq-nav-icon-color-muted: rgb(90, 90, 90) !default;
+$seq-nav-tooltip-color: rgb(51, 51, 51) !default;
+$seq-nav-height: 44px;
 
 // repeated extends - needed since LMS styling was referenced
 .block-link {
-  border-left: 1px solid lighten($border-color, 10%);
+  @include border-left(1px solid $seq-nav-border-color);
+
   display: block;
 
-  &:hover {
+  &:hover, &:focus {
     background: none;
   }
 }
 
 .topbar {
   @include clearfix();
-  border-bottom: 1px solid $border-color;
+
+  border-bottom: 1px solid $seq-nav-border-color;
 
   @media print {
     display: none;
@@ -20,197 +28,148 @@ $border-color: #C8C8C8;
 
   a {
     &.block-link {
-      border-left: 1px solid lighten($border-color, 10%);
+      @include border-left(1px solid $seq-nav-border-color);
+
       display: block;
 
-      &:hover {
+      &:hover, &:focus {
         background: none;
       }
     }
   }
 }
 
+%ui-clear-button  {
+  background-color: transparent;
+  background-image: none;
+  background-position: center 14px;
+  background-repeat: no-repeat;
+  border: none;
+  border-radius: 0;
+  background-clip: border-box;
+  box-shadow: none;
+  box-sizing: content-box;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+
 // ====================
 
-nav.sequence-nav {
-  // TODO (cpennington): This doesn't work anymore. XModules aren't able to
-  // import from external sources.
+.sequence-nav {
   @extend .topbar;
-  margin: -4px 0 30px;
+
+  margin: 0 0 $baseline 0;
   position: relative;
   border-bottom: none;
+  z-index: 0;
+  height: $seq-nav-height;
+  display: flex;
 
-  .left-shadow {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 9999;
-    width: 20px;
-    height: 46px;
-    @include linear-gradient(left, rgba(0, 0, 0, .2), rgba(0, 0, 0, 0));
-    background-color: transparent;
-    pointer-events: none;
+  .sequence-nav-button {
+    max-width: 200px;
   }
 
-  .right-shadow {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 9999;
-    width: 20px;
-    height: 46px;
-    @include linear-gradient(right, rgba(0, 0, 0, .2), rgba(0, 0, 0, 0));
-    background-color: transparent;
-    pointer-events: none;
+  @media print {
+    display: none;
   }
 
   .sequence-list-wrapper {
+    @extend %ui-depth2;
+
     position: relative;
-    z-index: 99;
-    border: 1px solid #ccc;
-    height: 44px;
-    margin: 0 30px;
-    @include linear-gradient(top, #ddd, #eee);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .1) inset;
+    height: 100%;
+    flex-grow: 1;
   }
 
   ol {
-    position: absolute;
-    top: 0;
-    left: 0;
-    @include box-sizing(border-box);
-    display: table;
-    height: 100%;
-    margin: 0;
-    padding: 0 10px;
-    width: 100%;
-
-    a {
-      @extend .block-link;
-    }
+    display: flex;
 
     li {
-      display: table-cell;
+      box-sizing: border-box;
       min-width: 20px;
+      flex-grow: 1;
+      border-color: $seq-nav-border-color;
+      border-width: 1px;
+      border-top-style: solid;
 
-      a {
+      &:not(:last-child) {
+        @include border-right-style(solid);
+      }
+
+      button {
+        @extend %ui-fake-link;
+        @extend %ui-clear-button;
+
         width: 100%;
-        height: 42px;
-        margin: 0;
-        background-position: center 14px;
-        background-repeat: no-repeat;
-        border: 1px solid transparent;
-        cursor: pointer;
-        display: block;
-        padding: 0;
+        height: ($seq-nav-height - 1);
         position: relative;
-        @include transition(none);
-        outline: 0;
+        margin: 0;
+        padding: 0;
+        display: block;
+        text-align: center;
+        border-color: $seq-nav-border-color;
+        border-width: 1px;
+        border-bottom-style: solid;
+        box-sizing: border-box;
 
-        &:focus {
-          outline: 0;
+        .icon {
+          display: block;
+          line-height: 100%; // This matches the height of the <a> its within (the parent) to get vertical centering.
+          font-size: 110%;
+          color: $seq-nav-icon-color-muted;
         }
 
-        &:hover {
-          background-color: #fff;
-          background-repeat: no-repeat;
-          background-position: center 14px;
-        }
-
-        &.active {
-          background-color: #fff;
-          z-index: 9;
-
-          // &:after {
-          //   content: '▲';
-          //   position: absolute;
-          //   top: 28px;
-          //   left: 50%;
-          //   z-index: 9999;
-          //   margin-left: -5px;
-          //   font-size: 12px;
-          //   color: #aaa;
-          // }
-
-          &:hover {
-            background-color: #fff;
-            background-repeat: no-repeat;
-            background-position: center 14px;
-          }
+        .fa-bookmark {
+          color: $seq-nav-link-color;
         }
 
         //video
         &.seq_video {
-          &.inactive {
-            background-image: url('../images/sequence-nav/video-icon-normal.png');
-          }
-
-          &.visited {
-            background-image: url('../images/sequence-nav/video-icon-visited.png');
-          }
-
-          &.active {
-            @extend .active;
-            background-image: url('../images/sequence-nav/video-icon-current.png');
+          .icon:before {
+            content: "\f008"; // .fa-film
           }
         }
 
         //other
         &.seq_other {
-          &.inactive {
-            background-image: url('../images/sequence-nav/document-icon-normal.png');
-          }
-
-          &.visited {
-            background-image: url('../images/sequence-nav/document-icon-visited.png');
-          }
-
-          &.active {
-            background-image: url('../images/sequence-nav/document-icon-current.png');
+          .icon:before {
+            content: "\f02d"; // .fa-book
           }
         }
 
-        //vertical & problems
-        &.seq_vertical, &.seq_problem {
-          &.inactive {
-            background-image: url('../images/sequence-nav/list-icon-normal.png');
-          }
-
-          &.visited {
-            background-image: url('../images/sequence-nav/list-icon-visited.png');
-          }
-
-          &.active {
-            background-image: url('../images/sequence-nav/list-icon-current.png');
-          }
-
-          &.progress-none {
-            background-image: url('../images/sequence-nav/list-unstarted.png');
-          }
-
-          &.progress-some, &.progress-in_progress {
-            background-image: url('../images/sequence-nav/list-unfinished.png');
-          }
-
-          &.progress-done {
-            background-image: url('../images/sequence-nav/list-finished.png');
+        //vertical
+        &.seq_vertical {
+          .icon:before {
+            content: "\f00b";  // .fa-tasks
           }
         }
 
-        p {
-          background: #333;
-          color: #fff;
+        //problems
+        &.seq_problem {
+          .icon:before {
+            content: "\f044";  // .fa-pencil-square-o
+          }
+        }
+
+        .sequence-tooltip {
+          @include text-align(left);
+
+          @extend %ui-depth2;
+
+          margin-top: ($baseline/5);
+          background: $seq-nav-tooltip-color;
+          color: $white;
           font-family: $sans-serif;
           line-height: lh();
-          left: 0px;
-          opacity: 0.0;
+          right: 0;  // Should not be RTLed, tooltips do not move in RTL
           padding: 6px;
           position: absolute;
           top: 48px;
-          text-shadow: 0 -1px 0 #000;
-          @include transition(all .1s $ease-in-out-quart 0s);
+          text-shadow: 0 -1px 0 $black;
           white-space: pre;
-          z-index: 99;
+          pointer-events: none;
 
           &:empty {
             background: none;
@@ -221,184 +180,116 @@ nav.sequence-nav {
           }
 
           &::after {
-            background: #333;
+            @include transform(rotate(45deg));
+            @include right(18px);
+
+            background: $seq-nav-tooltip-color;
             content: " ";
             display: block;
             height: 10px;
-            left: 18px;
+            right: 18px;  // Not RTLed, positions tooltips relative to seq nav item
             position: absolute;
             top: -5px;
-            @include transform(rotate(45deg));
             width: 10px;
           }
         }
-
-        &:hover {
-          p {
-            display: block;
-            margin-top: 4px;
-            opacity: 1.0;
-          }
-        }
       }
     }
   }
 
-  ul {
-    position: absolute;
-    top: 0;
-    list-style: none !important;
-    height: 100%;
-    right: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    border: none;
-
-    li {
-      position: absolute;
-      margin-bottom: 0;
-      height: 44px;
-      width: 70px;
-      border: 1px solid #ccc;
-      @include linear-gradient(top, #eee, #ddd);
-      box-shadow: 0 1px 0 rgba(255, 255, 255, .7) inset;
-
-      &.prev, &.next {
-
-        a {
-          background-position: center;
-          background-repeat: no-repeat;
-          display: block;
-          height: 34px;
-          width: 40px;
-          text-indent: -9999px;
-          @include transition(all .2s $ease-in-out-quad 0s);
-          outline: 0;
-
-          &:focus {
-            outline: 0;
-          }
-
-          &:hover {
-            opacity: 0.5;
-          }
-
-          &.disabled {
-            cursor: normal;
-            opacity: 0.4;
-          }
-        }
-      }
-
-      &.prev {
-        left: -10px;
-        border-radius: 35px 0 0 35px;
-
-        a {
-          background-image: url('../images/sequence-nav/previous-icon.png');
-          background-position: center 15px;
-        }
-      }
-
-      &.next {
-        right: -10px;
-        border-radius: 0 35px 35px 0;
-
-        a {
-          margin-left: 30px;
-          background-image: url('../images/sequence-nav/next-icon.png');
-          background-position: center 15px;
-        }
-      }
-    }
-  }
-
-  body.touch-based-device & ol li a:hover p {
+  body.touch-based-device & ol li button:hover p {
     display: none;
   }
 }
 
-div.seq_contents {
+.sequence-nav-button {
+  @extend %ui-depth3;
+
+  display: block;
+  top: 0;
+  height: 100%;
+  text-shadow: none; // overrides default button text-shadow
+  background: none;  // overrides default button gradient
+  background-color: white;
+  border-color: $seq-nav-border-color;
+  box-shadow: none;
+  min-width: 120px;
+  font-size: inherit;
+  font-weight: normal;
+  padding: 0 $baseline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+
+  span:not(:last-child) {
+    @include padding-right($baseline / 2);
+  }
+
+  &.button-previous {
+    @include left(0);
+    @include border-top-left-radius(3px);
+    @include border-top-right-radius(0);
+    @include border-bottom-right-radius(0);
+    @include border-bottom-left-radius(3px);
+  }
+
+  &.button-next {
+    @include right(0);
+    @include border-top-left-radius(0);
+    @include border-top-right-radius(3px);
+    @include border-bottom-right-radius(3px);
+    @include border-bottom-left-radius(0);
+  }
+
+  &.disabled {
+    cursor: normal;
+  }
+}
+
+.seq_contents {
   display: none;
 }
 
 nav.sequence-bottom {
-  margin: lh(2) 0 0;
-  text-align: center;
+  position: relative;
+  height: 45px;
+  margin: lh(2) auto;
+  display: flex;
+  justify-content: center;
 
-  ul {
-    @include clearfix();
-    @include inline-block();
+  .sequence-nav-button {
+    position: relative;
 
-    li {
-      float: left;
-      width: 50px;
-      height: 44px;
-      border: 1px solid #ccc;
-      @include linear-gradient(top, #eee, #ddd);
-      box-shadow: 0 1px 0 rgba(255, 255, 255, .7) inset;
+    &:last-of-type {
+      @include border-left(none);
+    }
+  }
 
-      &.prev, &.next {
-        margin-bottom: 0;
+  @media print {
+    display: none;
+  }
+}
 
-        a {
-          background-position: center center;
-          background-repeat: no-repeat;
-          border: none;
-          display: block;
-          padding: lh(.5) 4px;
-          text-indent: -9999px;
-          @include transition(all .2s $ease-in-out-quad 0s);
-          outline: 0;
+#seq_content {
+  &:focus,
+  &:active {
+    outline: none;
+  }
+}
 
-          &:hover {
-            opacity: 0.5;
-            background-position: center 15px;
-          }
+// hover and active states
+.sequence-nav-button,
+.sequence-nav button {
+  &.focused,
+  &:hover,
+  &:active,
+  &.active {
+    border-bottom: 3px solid $seq-nav-link-color;
+    // keeps icon/text centered on hover, necessary due to border-box setting
+    padding-top: 2px;
 
-          &.disabled {
-            opacity: 0.4;
-          }
-
-          &:focus {
-            outline: 0;
-          }
-        }
-      }
-
-      &.prev {
-        border-radius: 35px 0 0 35px;
-
-        a {
-          background-image: url('../images/sequence-nav/previous-icon.png');
-          background-position: center 15px;
-        }
-      }
-
-      &.next {
-        border-radius: 0 35px 35px 0;
-        border-left: none;
-
-        a {
-          background-image: url('../images/sequence-nav/next-icon.png');
-          background-position: center 15px;
-        }
-      }
+    .icon {
+      color: $seq-nav-icon-color;
     }
   }
 }
-
-.xmodule_VerticalModule ol.vert-mod > li ul.sequence-nav-buttons {
-  list-style: none !important;
-}
-
-.xmodule_SequenceModule nav.sequence-bottom ul li.next a,
-.xmodule_SequenceModule nav.sequence-bottom ul li.prev a {
-  outline: 0;
-
-  &:focus {
-    outline: 0;
-  }
-}
-

@@ -1,33 +1,87 @@
-
+# encoding: utf-8
+"""
+Modulestore configuration for test cases.
+"""
 import copy
-from uuid import uuid4
-from django.test import TestCase
+import functools
+import os
+from contextlib import contextmanager
+from enum import Enum
 
+from courseware.field_overrides import OverrideFieldData  # pylint: disable=import-error
+from courseware.tests.factories import StaffFactory
 from django.conf import settings
-import xmodule.modulestore.django
-from unittest.util import safe_repr
+from django.contrib.auth.models import AnonymousUser, User
+from django.test import TestCase
+from django.test.utils import override_settings
+from mock import patch
+from openedx.core.djangolib.testing.utils import CacheIsolationMixin, CacheIsolationTestCase, FilteredQueryCountMixin
+from openedx.core.lib.tempdir import mkdtemp_clean
+from student.models import CourseEnrollment
+from student.tests.factories import UserFactory
+from xmodule.contentstore.django import _CONTENTSTORE
+from xmodule.modulestore import ModuleStoreEnum
+from xmodule.modulestore.django import SignalHandler, clear_existing_modulestores, modulestore
+from xmodule.modulestore.tests.factories import XMODULE_FACTORY_LOCK
+from xmodule.modulestore.tests.mongo_connection import MONGO_HOST, MONGO_PORT_NUM
 
 
-def mongo_store_config(data_dir):
+class CourseUserType(Enum):
     """
-    Defines default module store using MongoModuleStore.
-
-    Use of this config requires mongo to be running.
+    Types of users to be used when testing a course.
     """
+    ANONYMOUS = 'anonymous'
+    COURSE_STAFF = 'course_staff'
+    ENROLLED = 'enrolled'
+    GLOBAL_STAFF = 'global_staff'
+    UNENROLLED = 'unenrolled'
+    UNENROLLED_STAFF = 'unenrolled_staff'
+
+
+class StoreConstructors(object):
+    """Enumeration of store constructor types."""
+    draft, split = range(2)
+
+
+def mixed_store_config(data_dir, mappings, store_order=None):
+    """
+    Return a `MixedModuleStore` configuration, which provides
+    access to both Mongo-backed courses.
+
+    Args:
+        data_dir (string): the directory from which to load XML-backed courses.
+        mappings (string): a dictionary mapping course IDs to modulestores, for example:
+
+            {
+                'MITx/2.01x/2013_Spring': 'xml',
+                'edx/999/2013_Spring': 'default'
+            }
+
+        where 'xml' and 'default' are the two options provided by this configuration,
+        mapping (respectively) to XML-backed and Mongo-backed modulestores..
+
+    Keyword Args:
+
+        store_order (list): List of StoreConstructors providing order of modulestores
+            to use in creating courses.
+    """
+    if store_order is None:
+        store_order = [StoreConstructors.draft, StoreConstructors.split]
+
+    store_constructors = {
+        StoreConstructors.split: split_mongo_store_config(data_dir)['default'],
+        StoreConstructors.draft: draft_mongo_store_config(data_dir)['default'],
+    }
+
     store = {
         'default': {
-            'ENGINE': 'xmodule.modulestore.mongo.MongoModuleStore',
+            'ENGINE': 'xmodule.modulestore.mixed.MixedModuleStore',
             'OPTIONS': {
-                'default_class': 'xmodule.raw_module.RawDescriptor',
-                'host': 'localhost',
-                'db': 'test_xmodule',
-                'collection': 'modulestore_%s' % uuid4().hex,
-                'fs_root': data_dir,
-                'render_template': 'mitxmako.shortcuts.render_to_string'
+                'mappings': mappings,
+                'stores': [store_constructors[store] for store in store_order],
             }
         }
     }
-    store['direct'] = store['default']
     return store
 
 
@@ -38,158 +92,461 @@ def draft_mongo_store_config(data_dir):
 
     modulestore_options = {
         'default_class': 'xmodule.raw_module.RawDescriptor',
-        'host': 'localhost',
-        'db': 'test_xmodule',
-        'collection': 'modulestore_%s' % uuid4().hex,
         'fs_root': data_dir,
-        'render_template': 'mitxmako.shortcuts.render_to_string'
+        'render_template': 'edxmako.shortcuts.render_to_string'
     }
 
-    return {
+    store = {
         'default': {
+            'NAME': 'draft',
             'ENGINE': 'xmodule.modulestore.mongo.draft.DraftModuleStore',
-            'OPTIONS': modulestore_options
-        },
-        'direct': {
-            'ENGINE': 'xmodule.modulestore.mongo.MongoModuleStore',
+            'DOC_STORE_CONFIG': {
+                'host': MONGO_HOST,
+                'port': MONGO_PORT_NUM,
+                'db': 'test_xmodule_{}'.format(os.getpid()),
+                'collection': 'modulestore',
+            },
             'OPTIONS': modulestore_options
         }
     }
 
+    return store
 
-def xml_store_config(data_dir):
+
+def split_mongo_store_config(data_dir):
     """
-    Defines default module store using XMLModuleStore.
+    Defines split module store.
+    """
+    modulestore_options = {
+        'default_class': 'xmodule.raw_module.RawDescriptor',
+        'fs_root': data_dir,
+        'render_template': 'edxmako.shortcuts.render_to_string',
+    }
+
+    store = {
+        'default': {
+            'NAME': 'draft',
+            'ENGINE': 'xmodule.modulestore.split_mongo.split_draft.DraftVersioningModuleStore',
+            'DOC_STORE_CONFIG': {
+                'host': MONGO_HOST,
+                'port': MONGO_PORT_NUM,
+                'db': 'test_xmodule_{}'.format(os.getpid()),
+                'collection': 'modulestore',
+            },
+            'OPTIONS': modulestore_options
+        }
+    }
+
+    return store
+
+
+def contentstore_config():
+    """
+    Return a new configuration for the contentstore that is isolated
+    from other such configurations.
     """
     return {
-        'default': {
-            'ENGINE': 'xmodule.modulestore.xml.XMLModuleStore',
-            'OPTIONS': {
-                'data_dir': data_dir,
-                'default_class': 'xmodule.hidden_module.HiddenDescriptor',
+        'ENGINE': 'xmodule.contentstore.mongo.MongoContentStore',
+        'DOC_STORE_CONFIG': {
+            'host': MONGO_HOST,
+            'db': 'test_xcontent_{}'.format(os.getpid()),
+            'port': MONGO_PORT_NUM,
+        },
+        # allow for additional options that can be keyed on a name, e.g. 'trashcan'
+        'ADDITIONAL_OPTIONS': {
+            'trashcan': {
+                'bucket': 'trash_fs'
             }
         }
     }
 
 
-class ModuleStoreTestCase(TestCase):
-    """ Subclass for any test case that uses the mongodb
-    module store. This populates a uniquely named modulestore
-    collection with templates before running the TestCase
-    and drops it they are finished. """
+@patch('xmodule.modulestore.django.create_modulestore_instance', autospec=True)
+def drop_mongo_collections(mock_create):
+    """
+    If using a Mongo-backed modulestore & contentstore, drop the collections.
+    """
+    # Do not create the modulestore if it does not exist.
+    mock_create.return_value = None
 
-    @staticmethod
-    def update_course(course, data):
+    module_store = modulestore()
+    if hasattr(module_store, '_drop_database'):
+        module_store._drop_database(database=False)  # pylint: disable=protected-access
+    _CONTENTSTORE.clear()
+    if hasattr(module_store, 'close_connections'):
+        module_store.close_connections()
+
+
+TEST_DATA_DIR = settings.COMMON_TEST_DATA_ROOT
+
+# This modulestore will provide a mixed mongo editable modulestore.
+# If your test uses the 'toy' course, use the the ToyCourseFactory to construct it.
+# If your test needs a closed course to test against, import the common/test/data/2014
+#   test course into this modulestore.
+# If your test needs a graded course to test against, import the common/test/data/graded
+#   test course into this modulestore.
+TEST_DATA_MIXED_MODULESTORE = functools.partial(
+    mixed_store_config,
+    TEST_DATA_DIR,
+    {}
+)
+
+# All store requests now go through mixed
+# Use this modulestore if you specifically want to test mongo and not a mocked modulestore.
+TEST_DATA_MONGO_MODULESTORE = functools.partial(mixed_store_config, mkdtemp_clean(), {})
+
+# All store requests now go through mixed
+# Use this modulestore if you specifically want to test split-mongo and not a mocked modulestore.
+TEST_DATA_SPLIT_MODULESTORE = functools.partial(
+    mixed_store_config,
+    mkdtemp_clean(),
+    {},
+    store_order=[StoreConstructors.split, StoreConstructors.draft]
+)
+
+
+class SignalIsolationMixin(object):
+    """
+    Simple utility mixin class to toggle ModuleStore signals on and off. This
+    class operates on `SwitchedSignal` objects on the modulestore's
+    `SignalHandler`.
+    """
+    @classmethod
+    def disable_all_signals(cls):
+        """Disable all signals in the modulestore's SignalHandler."""
+        for signal in SignalHandler.all_signals():
+            signal.disable()
+
+    @classmethod
+    def enable_all_signals(cls):
+        """Enable all signals in the modulestore's SignalHandler."""
+        for signal in SignalHandler.all_signals():
+            signal.enable()
+
+    @classmethod
+    def enable_signals_by_name(cls, *signal_names):
         """
-        Updates the version of course in the modulestore
-        with the metadata in 'data' and returns the updated version.
+        Enable specific signals in the modulestore's SignalHandler.
 
-        'course' is an instance of CourseDescriptor for which we want
-        to update metadata.
-
-        'data' is a dictionary with an entry for each CourseField we want to update.
+        Arguments:
+            signal_names (list of `str`): Names of signals to enable.
         """
-        store = xmodule.modulestore.django.modulestore()
-        store.update_metadata(course.location, data)
-        updated_course = store.get_instance(course.id, course.location)
-        return updated_course
+        for signal_name in signal_names:
+            try:
+                signal = SignalHandler.signal_by_name(signal_name)
+            except KeyError:
+                all_signal_names = sorted(s.name for s in SignalHandler.all_signals())
+                err_msg = (
+                    "You tried to enable signal '{}', but I don't recognize that "
+                    "signal name. Did you mean one of these?: {}"
+                )
+                raise ValueError(err_msg.format(signal_name, all_signal_names))
+            signal.enable()
 
-    @staticmethod
-    def flush_mongo_except_templates():
+
+class ModuleStoreIsolationMixin(CacheIsolationMixin, SignalIsolationMixin):
+    """
+    A mixin to be used by TestCases that want to isolate their use of the
+    Modulestore.
+
+    How to use::
+
+        class MyTestCase(ModuleStoreMixin, TestCase):
+
+            MODULESTORE = <settings for the modulestore to test>
+
+            ENABLED_SIGNALS = ['course_published']
+
+            def my_test(self):
+                self.start_modulestore_isolation()
+                self.addCleanup(self.end_modulestore_isolation)
+
+                modulestore.create_course(...)
+                ...
+
+    """
+    MODULESTORE = functools.partial(mixed_store_config, mkdtemp_clean(), {})
+    CONTENTSTORE = functools.partial(contentstore_config)
+    ENABLED_CACHES = ['default', 'mongo_metadata_inheritance', 'loc_cache']
+
+    # List of modulestore signals enabled for this test. Defaults to an empty
+    # list. The list of signals available is found on the SignalHandler class,
+    # in /common/lib/xmodule/xmodule/modulestore/django.py
+    #
+    # You must use the signal itself, and not its name. So for example:
+    #
+    # class MyPublishTestCase(ModuleStoreTestCase):
+    #     ENABLED_SIGNALS = ['course_published', 'pre_publish']
+    #
+    ENABLED_SIGNALS = []
+
+    __settings_overrides = []
+    __old_modulestores = []
+    __old_contentstores = []
+
+    @classmethod
+    def start_modulestore_isolation(cls):
         """
-        Delete everything in the module store except templates.
+        Isolate uses of the modulestore after this call. Once
+        :py:meth:`end_modulestore_isolation` is called, this modulestore will
+        be flushed (all content will be deleted).
         """
-        modulestore = xmodule.modulestore.django.modulestore()
+        cls.disable_all_signals()
+        cls.enable_signals_by_name(*cls.ENABLED_SIGNALS)
+        cls.start_cache_isolation()
+        override = override_settings(
+            MODULESTORE=cls.MODULESTORE(),
+            CONTENTSTORE=cls.CONTENTSTORE(),
+        )
 
-        # This query means: every item in the collection
-        # that is not a template
-        query = {"_id.course": {"$ne": "templates"}}
+        cls.__old_modulestores.append(copy.deepcopy(settings.MODULESTORE))
+        cls.__old_contentstores.append(copy.deepcopy(settings.CONTENTSTORE))
+        override.__enter__()
+        cls.__settings_overrides.append(override)
+        XMODULE_FACTORY_LOCK.enable()
+        clear_existing_modulestores()
+        cls.store = modulestore()
 
-        # Remove everything except templates
-        modulestore.collection.remove(query)
-        modulestore.collection.drop()
+    @classmethod
+    def end_modulestore_isolation(cls):
+        """
+        Delete all content in the Modulestore, and reset the Modulestore
+        settings from before :py:meth:`start_modulestore_isolation` was
+        called.
+        """
+        drop_mongo_collections()  # pylint: disable=no-value-for-parameter
+        XMODULE_FACTORY_LOCK.disable()
+        cls.__settings_overrides.pop().__exit__(None, None, None)
+
+        assert settings.MODULESTORE == cls.__old_modulestores.pop()
+        assert settings.CONTENTSTORE == cls.__old_contentstores.pop()
+        cls.end_cache_isolation()
+        cls.enable_all_signals()
+
+
+class ModuleStoreTestUsersMixin():
+    """
+    A mixin to help manage test users.
+    """
+    TEST_PASSWORD = 'test'
+
+    def create_user_for_course(self, course, user_type=CourseUserType.ENROLLED):
+        """
+        Create a test user for a course.
+        """
+        if user_type is CourseUserType.ANONYMOUS:
+            return AnonymousUser()
+
+        is_enrolled = user_type is CourseUserType.ENROLLED
+        is_unenrolled_staff = user_type is CourseUserType.UNENROLLED_STAFF
+
+        # Set up the test user
+        if is_unenrolled_staff:
+            user = StaffFactory(course_key=course.id, password=self.TEST_PASSWORD)
+        else:
+            user = UserFactory(password=self.TEST_PASSWORD)
+        self.client.login(username=user.username, password=self.TEST_PASSWORD)
+        if is_enrolled:
+            CourseEnrollment.enroll(user, course.id)
+        return user
+
+
+class SharedModuleStoreTestCase(
+    ModuleStoreTestUsersMixin, FilteredQueryCountMixin, ModuleStoreIsolationMixin, CacheIsolationTestCase
+):
+    """
+    Subclass for any test case that uses a ModuleStore that can be shared
+    between individual tests. This class ensures that the ModuleStore is cleaned
+    before/after the entire test case has run. Use this class if your tests
+    set up one or a small number of courses that individual tests do not modify.
+    If your tests modify contents in the ModuleStore, you should use
+    ModuleStoreTestCase instead.
+
+    How to use::
+
+        from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
+        from student.tests.factories import CourseEnrollmentFactory, UserFactory
+
+        class MyModuleStoreTestCase(SharedModuleStoreTestCase):
+            @classmethod
+            def setUpClass(cls):
+                super(MyModuleStoreTestCase, cls).setUpClass()
+                cls.course = CourseFactory.create()
+
+            def setUp(self):
+                super(MyModuleStoreTestCase, self).setUp()
+                self.user = UserFactory.create()
+                CourseEnrollmentFactory.create(
+                    user=self.user, course_id=self.course.id
+                )
+
+    Important things to note:
+
+    1. You're creating the course in setUpClass(), *not* in setUp().
+    2. Any Django ORM operations should still happen in setUp(). Models created
+       in setUpClass() will *not* be cleaned up, and will leave side-effects
+       that can break other, completely unrelated test cases.
+
+    In Django 1.8, we will be able to use setUpTestData() to do class level init
+    for Django ORM models that will get cleaned up properly.
+    """
+    # Tell Django to clean out all databases, not just default
+    multi_db = True
+
+    @classmethod
+    @contextmanager
+    def setUpClassAndTestData(cls):  # pylint: disable=invalid-name
+        """
+        For use when the test class has a setUpTestData() method that uses variables
+        that are setup during setUpClass() of the same test class.
+        Use it like so:
+        @classmethod
+        def setUpClass(cls):
+            with super(MyTestClass, cls).setUpClassAndTestData():
+                <all the cls.setUpClass() setup code that performs modulestore setup...>
+        @classmethod
+        def setUpTestData(cls):
+            <all the setup code that creates Django models per test class...>
+            <these models can use variables (courses) setup in setUpClass() above>
+        """
+        cls.start_modulestore_isolation()
+        # Now yield to allow the test class to run its setUpClass() setup code.
+        yield
+        # Now call the base class, which calls back into the test class's setUpTestData().
+        super(SharedModuleStoreTestCase, cls).setUpClass()
 
     @classmethod
     def setUpClass(cls):
         """
-        Flush the mongo store and set up templates.
+        Start modulestore isolation, and then load modulestore specific
+        test data.
         """
-
-        # Use a uuid to differentiate
-        # the mongo collections on jenkins.
-        cls.orig_modulestore = copy.deepcopy(settings.MODULESTORE)
-        if 'direct' not in settings.MODULESTORE:
-            settings.MODULESTORE['direct'] = settings.MODULESTORE['default']
-
-        settings.MODULESTORE['default']['OPTIONS']['collection'] = 'modulestore_%s' % uuid4().hex
-        settings.MODULESTORE['direct']['OPTIONS']['collection'] = 'modulestore_%s' % uuid4().hex
-        xmodule.modulestore.django._MODULESTORES.clear()
-
-        print settings.MODULESTORE
-
-        TestCase.setUpClass()
+        super(SharedModuleStoreTestCase, cls).setUpClass()
+        cls.start_modulestore_isolation()
 
     @classmethod
     def tearDownClass(cls):
-        """
-        Revert to the old modulestore settings.
-        """
+        cls.end_modulestore_isolation()
+        super(SharedModuleStoreTestCase, cls).tearDownClass()
 
-        # Clean up by dropping the collection
-        modulestore = xmodule.modulestore.django.modulestore()
-        modulestore.collection.drop()
-
-        xmodule.modulestore.django._MODULESTORES.clear()
-
-        # Restore the original modulestore settings
-        settings.MODULESTORE = cls.orig_modulestore
-
-    def _pre_setup(self):
-        """
-        Remove everything but the templates before each test.
-        """
-
-        # Flush anything that is not a template
-        ModuleStoreTestCase.flush_mongo_except_templates()
-
-        # Call superclass implementation
-        super(ModuleStoreTestCase, self)._pre_setup()
-
-    def _post_teardown(self):
-        """
-        Flush everything we created except the templates.
-        """
-        # Flush anything that is not a template
-        ModuleStoreTestCase.flush_mongo_except_templates()
-
-        # Call superclass implementation
-        super(ModuleStoreTestCase, self)._post_teardown()
+    def setUp(self):
+        # OverrideFieldData.provider_classes is always reset to `None` so
+        # that they're recalculated for every test
+        OverrideFieldData.provider_classes = None
+        super(SharedModuleStoreTestCase, self).setUp()
 
 
-    def assert2XX(self, status_code, msg=None):
-        """
-        Assert that the given value is a success status (between 200 and 299)
-        """
-        msg = self._formatMessage(msg, "%s is not a success status" % safe_repr(status_code))
-        self.assertTrue(status_code >= 200 and status_code < 300, msg=msg)
+class ModuleStoreTestCase(
+    ModuleStoreTestUsersMixin, FilteredQueryCountMixin, ModuleStoreIsolationMixin, TestCase
+):
+    """
+    Subclass for any test case that uses a ModuleStore.
+    Ensures that the ModuleStore is cleaned before/after each test.
 
-    def assert3XX(self, status_code, msg=None):
-        """
-        Assert that the given value is a redirection status (between 300 and 399)
-        """
-        msg = self._formatMessage(msg, "%s is not a redirection status" % safe_repr(status_code))
-        self.assertTrue(status_code >= 300 and status_code < 400, msg=msg)
+    Usage:
 
-    def assert4XX(self, status_code, msg=None):
-        """
-        Assert that the given value is a client error status (between 400 and 499)
-        """
-        msg = self._formatMessage(msg, "%s is not a client error status" % safe_repr(status_code))
-        self.assertTrue(status_code >= 400 and status_code < 500, msg=msg)
+        1. Create a subclass of `ModuleStoreTestCase`
+        2. (optional) If you need a specific variety of modulestore, or particular ModuleStore
+           options, set the MODULESTORE class attribute of your test class to the
+           appropriate modulestore config.
 
-    def assert5XX(self, status_code, msg=None):
+           For example:
+
+               class FooTest(ModuleStoreTestCase):
+                   MODULESTORE = mixed_store_config(data_dir, mappings)
+                   # ...
+
+        3. Use factories (e.g. `CourseFactory`, `ItemFactory`) to populate
+           the modulestore with test data.
+
+    NOTE:
+        * For Mongo-backed courses (created with `CourseFactory`),
+          the state of the course will be reset before/after each
+          test method executes.
+
+        * For XML-backed courses, the course state will NOT
+          reset between test methods (although it will reset
+          between test classes)
+
+          The reason is: XML courses are not editable, so to reset
+          a course you have to reload it from disk, which is slow.
+
+          If you do need to reset an XML course, use
+          `clear_existing_modulestores()` directly in
+          your `setUp()` method.
+    """
+
+    CREATE_USER = True
+
+    # Tell Django to clean out all databases, not just default
+    multi_db = True
+
+    @classmethod
+    def setUpClass(cls):
+        super(ModuleStoreTestCase, cls).setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super(ModuleStoreTestCase, cls).tearDownClass()
+
+    def setUp(self):
         """
-        Assert that the given value is a server error status (between 500 and 599)
+        Creates a test User if `self.CREATE_USER` is True.
+        Sets the password as self.user_password.
         """
-        msg = self._formatMessage(msg, "%s is not a server error status" % safe_repr(status_code))
-        self.assertTrue(status_code >= 500 and status_code < 600, msg=msg)
+        self.start_modulestore_isolation()
+
+        self.addCleanup(self.end_modulestore_isolation)
+
+        # When testing CCX, we should make sure that
+        # OverrideFieldData.provider_classes is always reset to `None` so
+        # that they're recalculated for every test
+        OverrideFieldData.provider_classes = None
+
+        super(ModuleStoreTestCase, self).setUp()
+
+        self.store = modulestore()
+
+        uname = 'testuser'
+        email = 'test+courses@edx.org'
+        self.user_password = 'foo'
+
+        if self.CREATE_USER:
+            # Create the user so we can log them in.
+            self.user = User.objects.create_user(uname, email, self.user_password)
+
+            # Note that we do not actually need to do anything
+            # for registration if we directly mark them active.
+            self.user.is_active = True
+
+            # Staff has access to view all courses
+            self.user.is_staff = True
+            self.user.save()
+
+    def create_non_staff_user(self):
+        """
+        Creates a non-staff test user.
+        Returns the non-staff test user and its password.
+        """
+        uname = 'teststudent'
+        password = 'foo'
+        nonstaff_user = User.objects.create_user(uname, 'test+student@edx.org', password)
+
+        # Note that we do not actually need to do anything
+        # for registration if we directly mark them active.
+        nonstaff_user.is_active = True
+        nonstaff_user.is_staff = False
+        nonstaff_user.save()
+        return nonstaff_user, password
+
+    def update_course(self, course, user_id):
+        """
+        Updates the version of course in the modulestore
+
+        'course' is an instance of CourseDescriptor for which we want
+        to update metadata.
+        """
+        with self.store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, course.id):
+            self.store.update_item(course, user_id)
+        updated_course = self.store.get_course(course.id)
+        return updated_course

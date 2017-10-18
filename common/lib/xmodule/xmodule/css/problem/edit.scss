@@ -1,13 +1,11 @@
 .editor-bar {
-
   .editor-tabs {
-
     .advanced-toggle {
-      @include white-button;
       height: auto;
       margin-top: -4px;
       padding: 3px 9px;
       font-size: 12px;
+      color: $link-color;
 
       &.current {
         border: 1px solid $lightGrey !important;
@@ -17,8 +15,10 @@
         pointer-events: none;
         cursor: none;
 
-        &:hover {
+        &:hover,
+        &:focus {
           box-shadow: 0 0 0 0 !important;
+          background-color: $white;
         }
       }
     }
@@ -45,20 +45,22 @@
   left: 100%;
   width: 0;
   border-radius: 0 3px 3px 0;
-  @include linear-gradient(left, rgba(0, 0, 0, .1), rgba(0, 0, 0, 0) 4px);
-  background-color: #fff;
+
+  @include linear-gradient(left, $shadow-l1, $transparent 4px);
+
+  background-color: $white;
   overflow: hidden;
+
   @include transition(width .3s linear 0s);
 
   &.shown {
-    width: 300px;
+    width: 20%;
     height: 100%;
     overflow-y: scroll;
   }
 
   .cheatsheet-wrapper {
-    width: 240px;
-    padding: 20px 30px;
+    padding: 10%;
   }
 
   h6 {
@@ -68,7 +70,8 @@
   }
 
   .row {
-    @include clearfix;
+    @include clearfix();
+
     padding-bottom: 5px !important;
     margin-bottom: 10px !important;
     border-bottom: 1px solid #ddd !important;
@@ -80,11 +83,15 @@
   }
 
   .col {
-    float: left;
+    display: block;
 
     &.sample {
       width: 60px;
       margin-right: 30px;
+
+      .icon {
+        height: ($baseline * 1.5);
+      }
     }
   }
 
@@ -100,8 +107,8 @@
 }
 
 .problem-editor {
-// adding padding to simple editor only - adjacent selector is needed since there are no toggles for CodeMirror
- .markdown-box+.CodeMirror {
+  // adding padding to simple editor only - adjacent selector is needed since there are no toggles for CodeMirror
+  .markdown-box+.CodeMirror {
     padding: 10px;
   }
 }
@@ -111,40 +118,5 @@
   width: 26px;
   height: 21px;
   vertical-align: middle;
-  background: url(../img/problem-editor-icons.png) no-repeat;
+  color: $base-font-color;
 }
-
-.problem-editor-icon.heading1 {
-  width: 18px;
-  background-position: -265px 0;
-}
-
-.problem-editor-icon.multiple-choice {
-  background-position: 0 0;
-}
-
-.problem-editor-icon.checks {
-  background-position: -56px 0;
-}
-
-.problem-editor-icon.string {
-  width: 28px;
-  background-position: -111px 0;
-}
-
-.problem-editor-icon.number {
-  width: 24px;
-  background-position: -168px 0;
-}
-
-.problem-editor-icon.dropdown {
-  width: 17px;
-  background-position: -220px 0;
-}
-
-.problem-editor-icon.explanation {
-  width: 17px;
-  background-position: -307px 0;
-}
-
-

@@ -1,14 +1,21 @@
 {% extends "main_django.html" %}
-{% load compressed %}{% load sekizai_tags i18n %}{% load url from future %}{% load staticfiles %}
+{% with online_help_token="wiki" %}
+{% load theme_pipeline %}{% load sekizai_tags i18n configuration %}{% load staticfiles %}
 
-{% block title %}<title>{% block pagetitle %}{% endblock %} | edX Wiki</title>{% endblock %}
+{% block title %}
+  {% block pagetitle %}{% endblock %} | {% trans "Wiki" %} | {% platform_name %}
+{% endblock %}
+
+{% block bodyclass %}view-in-course view-wiki{% endblock %}
 
 {% block headextra %}
-  {% compressed_css 'course' %}
-  
+  {% stylesheet 'course' %}
+  {% stylesheet 'style-course-vendor' %}
+  {% stylesheet 'style-course' %}
+
   <script type="text/javascript">
     function ajaxError(){}
-    
+
     $.ajaxSetup({
       timeout: 7000,
       cache: false,
@@ -31,10 +38,6 @@
 
   {% addtoblock 'js' %}
     {% comment %} These scripts load at the bottom of the body {% endcomment %}
-    <script>
-      window.onload = add_schematic_handler(window.onload);
-    </script>
-
     <script src="{% static 'js/bootstrap-alert.js' %}"></script>
     <script src="{% static 'js/bootstrap-collapse.js' %}"></script>
     <script src="{% static 'js/bootstrap-modal.js' %}"></script>
@@ -46,32 +49,42 @@
 
 {% endblock %}
 
-
 {% block body %}
-  {% if course %}
+  {% if request.course %}
+  {% with course=request.course %}
     {% include "courseware/course_navigation.html" with active_page_context="wiki" %}
+  {% endwith %}
   {% endif %}
 
-  <section class="container wiki {{ selected_tab }}">
-    <div class="wiki-wrapper">
-      {% block wiki_body %}
-        
-        {% block wiki_breadcrumbs %}{% endblock %}
+<div class="container">
+  <div class="wiki-wrapper">
+    <main id="main" aria-label="Content" tabindex="-1">
+          <section class="wiki {{ selected_tab }}" id="wiki-content"
+            {% if request.course.language %}
+              lang="{{ request.course.language }}"
+            {% endif %}
+          >
+        {% block wiki_body %}
 
-        {% if messages %}
-          {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">
-              <a class="close" data-dismiss="alert" href="#">&times;</a>
-              {{ message }}
-            </div>
-          {% endfor %}
-        {% endif %}
+          {% block wiki_breadcrumbs %}{% endblock %}
 
-        {% block wiki_contents %}{% endblock %}
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }}">
+                <a class="close" data-dismiss="alert" href="#">&times;</a>
+                {{ message }}
+              </div>
+            {% endfor %}
+          {% endif %}
 
-      {% endblock %}
-    </div>
+          {% block wiki_contents %}{% endblock %}
 
-  </section>
+        {% endblock %}
+
+      </section>
+    </main>
+  </div>
+</div>
 
 {% endblock %}
+{% endwith %}

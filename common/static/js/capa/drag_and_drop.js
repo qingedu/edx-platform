@@ -1,12 +1,12 @@
 // Wrapper for RequireJS. It will make the standard requirejs(), require(), and
 // define() functions from Require JS available inside the anonymous function.
 //
-// See https://edx-wiki.atlassian.net/wiki/display/LMS/Integration+of+Require+JS+into+the+system
-(function (requirejs, require, define) {
-
-requirejs.config({
-    'baseUrl': '/static/js/capa/drag_and_drop/'
-});
+// See https://openedx.atlassian.net/wiki/display/PLAT/Integration+of+Require+JS+into+the+system
+(function(requirejs, require, define) {
+// HACK: this should be removed when it is safe to do so
+    if (window.baseUrl) {
+        requirejs.config({baseUrl: baseUrl});
+    }
 
 // The current JS file will be loaded and run each time. It will require a
 // single dependency which will be loaded and stored by RequireJS. On
@@ -14,9 +14,9 @@ requirejs.config({
 // than loading it again from the server. For that reason, it is a good idea to
 // keep the current JS file as small as possible, and move everything else into
 // RequireJS module dependencies.
-requirejs(['main'], function (Main) {
-    Main();
-});
+    require(['js/capa/drag_and_drop/main'], function(Main) {
+        Main();
+    });
 
 // End of wrapper for RequireJS. As you can see, we are passing
 // namespaced Require JS variables to an anonymous function. Within

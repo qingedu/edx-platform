@@ -1,11 +1,9 @@
 from django import forms
-from django.forms.util import flatatt
+from django.forms.utils import flatatt
+from django.template.loader import render_to_string
 from django.utils.encoding import force_unicode
 from django.utils.html import conditional_escape
 from django.utils.safestring import mark_safe
-
-from django.template.loader import render_to_string
-
 from wiki.editors.base import BaseEditor
 from wiki.editors.markitup import MarkItUpAdminWidget
 
@@ -20,7 +18,8 @@ class CodeMirrorWidget(forms.Widget):
         super(CodeMirrorWidget, self).__init__(default_attrs)
 
     def render(self, name, value, attrs=None):
-        if value is None: value = ''
+        if value is None:
+            value = ''
 
         final_attrs = self.build_attrs(attrs, name=name)
 
@@ -41,7 +40,7 @@ class CodeMirror(BaseEditor):
     def get_widget(self, instance=None):
         return CodeMirrorWidget()
 
-    class AdminMedia:
+    class AdminMedia(object):  # pylint: disable=missing-docstring
         css = {
             'all': ("wiki/markitup/skins/simple/style.css",
                     "wiki/markitup/sets/admin/style.css",)
@@ -51,13 +50,13 @@ class CodeMirror(BaseEditor):
               "wiki/markitup/sets/admin/set.js",
               )
 
-    class Media:
+    class Media(object):  # pylint: disable=missing-docstring
         css = {
             'all': ("js/vendor/CodeMirror/codemirror.css",)
         }
         js = ("js/vendor/CodeMirror/codemirror.js",
-              "js/vendor/CodeMirror/xml.js",
-              "js/vendor/CodeMirror/mitx_markdown.js",
+              "js/vendor/CodeMirror/addons/xml.js",
+              "js/vendor/CodeMirror/addons/edx_markdown.js",
+              "js/wiki/accessible.js",
               "js/wiki/CodeMirror.init.js",
-              "js/wiki/cheatsheet.js",
               )

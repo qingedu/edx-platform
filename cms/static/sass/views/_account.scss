@@ -1,8 +1,9 @@
 // studio - views - sign up/in
 // ====================
 
-body.signup, body.signin {
-
+.view-signup,
+.view-signin,
+.view-util {
   .wrapper-content {
     margin: ($baseline*1.5) 0 0 0;
     padding: 0 $baseline;
@@ -12,7 +13,9 @@ body.signup, body.signin {
 
   .content {
     @include clearfix();
-    @extend .t-copy-base;
+
+    @extend %t-copy-base;
+
     max-width: $fg-max-width;
     min-width: $fg-min-width;
     width: flex-grid(12);
@@ -26,37 +29,41 @@ body.signup, body.signin {
       padding-bottom: ($baseline/2);
 
       h1 {
-        @extend .t-title3;
+        @extend %t-title3;
+        @extend %t-strong;
+
         margin: 0;
         padding: 0;
-        font-weight: 600;
       }
 
       .action {
-        @extend .t-action3;
+        @extend %t-action3;
+
         position: absolute;
-        right: 0;
+
+        @include right(0);
+
         top: 40%;
       }
     }
 
     .introduction {
-      @extend .t-copy-sub1;
+      @extend %t-copy-sub1;
+
       margin: 0 0 $baseline 0;
     }
   }
 
   .content-primary, .content-supplementary {
     @include box-sizing(border-box);
-    float: left;
   }
 
   .content-primary {
-    width: flex-grid(8, 12);
-    margin-right: flex-gutter();
+    @extend .ui-col-wide;
 
     form {
       @include box-sizing(border-box);
+
       box-shadow: 0 1px 2px $shadow-l1;
       border-radius: 2px;
       width: 100%;
@@ -68,21 +75,21 @@ body.signup, body.signin {
         margin-top: $baseline;
 
         .action-primary {
-          @include blue-button;
-          @extend .t-action2;
+          @include blue-button();
           @include transition(all $tmg-f3 linear 0s);
+
+          @extend %t-action2;
+          @extend %t-strong;
+
           display: block;
           width: 100%;
           padding: ($baseline*0.75) ($baseline/2);
-          font-weight: 600;
           text-transform: uppercase;
         }
       }
 
       .list-input {
-        margin: 0;
-        padding: 0;
-        list-style: none;
+        @extend %cont-no-list;
 
         .field {
           margin: 0 0 ($baseline*0.75) 0;
@@ -92,12 +99,11 @@ body.signup, body.signin {
           }
 
           &.required {
-
             label {
-              font-weight: 600;
+              @extend %t-strong;
             }
 
-            label:after {
+            label::after {
               margin-left: ($baseline/4);
               content: "*";
             }
@@ -108,8 +114,10 @@ body.signup, body.signin {
           }
 
           label {
-            @extend  .t-copy-sub1;
+            @extend %t-copy-sub1;
+
             @include transition(color $tmg-f3 ease-in-out 0s);
+
             margin: 0 0 ($baseline/4) 0;
 
             &.is-focused {
@@ -118,7 +126,8 @@ body.signup, body.signin {
           }
 
           input, textarea {
-            @extend .t-copy-base;
+            @extend %t-copy-base;
+
             height: 100%;
             width: 100%;
             padding: ($baseline/2);
@@ -132,25 +141,24 @@ body.signup, body.signin {
             }
 
             ::-webkit-input-placeholder {
-               color: $gray-l4;
+              color: $gray-l4;
             }
 
             :-moz-placeholder {
-               color: $gray-l3;
+              color: $gray-l3;
             }
 
             ::-moz-placeholder {
-               color: $gray-l3;
+              color: $gray-l3;
             }
 
             :-ms-input-placeholder {
-               color: $gray-l3;
+              color: $gray-l3;
             }
 
             &:focus {
-
               + .tip {
-                color: $gray;
+                color: $gray-d1;
               }
             }
           }
@@ -171,16 +179,19 @@ body.signup, body.signin {
           }
 
           .tip {
-            @extend .t-copy-sub2;
+            @extend %t-copy-sub2;
+
             @include transition(color $tmg-f3 ease-in-out 0s);
+
             display: block;
             margin-top: ($baseline/4);
-            color: $gray-l3;
+            color: $gray-d1;
           }
         }
 
         .field-group {
           @include clearfix();
+
           margin: 0 0 ($baseline/2) 0;
 
           .field {
@@ -209,14 +220,15 @@ body.signup, body.signin {
   }
 
   .content-supplementary {
-    width: flex-grid(4, 12);
+    @extend .ui-col-narrow;
 
     .bit {
-      @extend .t-copy-sub1;
+      @extend %t-copy-sub1;
+
       margin: 0 0 $baseline 0;
       border-bottom: 1px solid $gray-l4;
       padding: 0 0 $baseline 0;
-      color: $gray-l1;
+      color: $gray-d1;
 
       &:last-child {
         margin-bottom: 0;
@@ -225,71 +237,26 @@ body.signup, body.signin {
       }
 
       h3 {
-        @extend .t-title7;
+        @extend %t-title7;
+        @extend %t-strong;
+
         margin: 0 0 ($baseline/4) 0;
         color: $gray-d2;
-        font-weight: 600;
       }
 
     }
   }
-}
-
-.signup {
-
-}
-
-.signin {
 
   #field-password {
     position: relative;
 
     .action-forgotpassword {
-      @extend .t-action3;
+      @extend %t-action3;
+
       position: absolute;
       top: 0;
-      right: 0;
+
+      @include right(0);
     }
-  }
-}
-
-// ====================
-
-// messages
-.message {
-  @extend .t-copy-sub1;
-  display: block;
-}
-
-.message-status {
-  display: none;
-  @include border-top-radius(2px);
-  @include box-sizing(border-box);
-  border-bottom: 2px solid $yellow-d2;
-  margin: 0 0 $baseline 0;
-  padding: ($baseline/2) $baseline;
-  font-weight: 500;
-  background: $yellow-d1;
-  color: $white;
-
-  [class^="icon-"] {
-    position: relative;
-    top: 1px;
-    @include font-size(16);
-    display: inline-block;
-    margin-right: ($baseline/2);
-  }
-
-  .text {
-    display: inline-block;
-  }
-
-  &.error {
-    border-color: shade($red, 50%);
-    background: tint($red, 20%);
-  }
-
-  &.is-shown {
-    display: block;
   }
 }

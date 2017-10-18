@@ -1,19 +1,41 @@
-<%! from django.utils.translation import ugettext as _ %>
+<%page expression_filter="h"/>
+<%!
+from openedx.core.djangolib.markup import HTML, Text
+from django.utils.translation import ugettext as _
+%>
 <%inherit file="base.html" />
-
-<%block name="title">${_("Studio Server Error")}</%block>
+<%block name="title">
+${Text(_("{studio_name} Server Error")).format(
+  studio_name=Text(settings.STUDIO_SHORT_NAME)
+)}
+</%block>
+<%block name="bodyclass">view-util util-500</%block>
 
 <%block name="content">
-
 <div class="wrapper-content wrapper">
   <section class="content">
-    <h1>${_("The <em>Studio</em> servers encountered an error")}</h1>
-    <p>
-      ${_("An error occurred in Studio and the page could not be loaded. Please try again in a few moments.")}
-      ${_("We've logged the error and our staff is currently working to resolve this error as soon as possible.")}
-      ${_('If the problem persists, please email us at {email}.').format(email='<a href="mailto:technical@edx.org">technical@edx.org</a>')}
-    </p>
+    <header>
+      <h1 class="title title-1">
+        ${Text(_(u"The {em_start}{studio_name}{em_end} servers encountered an error")).format(
+          em_start=HTML('<em>'),
+          em_end=HTML('</em>'),
+          studio_name=Text(settings.STUDIO_SHORT_NAME),
+        )}
+      </h1>
+    </header>
+    <article class="content-primary" role="main">
+      <p>
+        ${Text(_("An error occurred in {studio_name} and the page could not be loaded. Please try again in a few moments.")).format(
+          studio_name=Text(settings.STUDIO_SHORT_NAME),
+        )}
+        ${_("We've logged the error and our staff is currently working to resolve this error as soon as possible.")}
+        ${Text(_(u'If the problem persists, please email us at {email_link}.')).format(
+          email_link=HTML(u'<a href="mailto:{email_address}">{email_address}</a>').format(
+            email_address=Text(settings.TECH_SUPPORT_EMAIL),
+          )
+        )}
+      </p>
+    </article>
   </section>
 </div>
-
 </%block>

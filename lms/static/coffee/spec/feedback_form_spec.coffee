@@ -1,15 +1,12 @@
 describe 'FeedbackForm', ->
   beforeEach ->
-    loadFixtures 'feedback_form.html'
+    loadFixtures 'coffee/fixtures/feedback_form.html'
 
   describe 'constructor', ->
     beforeEach ->
       new FeedbackForm
-      spyOn($, 'postWithPrefix').andCallFake (url, data, callback, format) ->
+      spyOn($, 'postWithPrefix').and.callFake (url, data, callback, format) ->
         callback()
-
-    it 'binds to the #feedback_button', ->
-      expect($('#feedback_button')).toHandle 'click'
 
     it 'post data to /send_feedback on click', ->
       $('#feedback_subject').val 'Awesome!'

@@ -10,7 +10,7 @@ class CorrectMap(object):
     in a capa problem.  The response evaluation result for each answer_id includes
     (correctness, npoints, msg, hint, hintmode).
 
-    - correctness : either 'correct' or 'incorrect'
+    - correctness : 'correct', 'incorrect', 'partially-correct', or 'incomplete'
     - npoints     : None, or integer specifying number of points awarded for this answer_id
     - msg         : string (may have HTML) giving extra message response
                     (displayed below textline or textbox)
@@ -37,35 +37,41 @@ class CorrectMap(object):
         return self.cmap.__iter__()
 
     # See the documentation for 'set_dict' for the use of kwargs
-    def set(self,
-            answer_id=None,
-            correctness=None,
-            npoints=None,
-            msg='',
-            hint='',
-            hintmode=None,
-            queuestate=None, **kwargs):
+    def set(
+        self,
+        answer_id=None,
+        correctness=None,
+        npoints=None,
+        msg='',
+        hint='',
+        hintmode=None,
+        queuestate=None,
+        answervariable=None,    # pylint: disable=C0330
+        **kwargs
+    ):
 
         if answer_id is not None:
-            self.cmap[str(answer_id)] = {'correctness': correctness,
-                                    'npoints': npoints,
-                                    'msg': msg,
-                                    'hint': hint,
-                                    'hintmode': hintmode,
-                                    'queuestate': queuestate,
-                                    }
+            self.cmap[answer_id] = {
+                'correctness': correctness,
+                'npoints': npoints,
+                'msg': msg,
+                'hint': hint,
+                'hintmode': hintmode,
+                'queuestate': queuestate,
+                'answervariable': answervariable,
+            }
 
     def __repr__(self):
         return repr(self.cmap)
 
     def get_dict(self):
-        '''
+        """
         return dict version of self
-        '''
+        """
         return self.cmap
 
     def set_dict(self, correct_map):
-        '''
+        """
         Set internal dict of CorrectMap to provided correct_map dict
 
         correct_map is saved by LMS as a plaintext JSON dump of the correctmap dict. This
@@ -81,7 +87,7 @@ class CorrectMap(object):
         Special migration case:
             If correct_map is a one-level dict, then convert it to the new dict of dicts format.
 
-        '''
+        """
         # empty current dict
         self.__init__()
 
@@ -95,8 +101,21 @@ class CorrectMap(object):
                 self.set(k, **correct_map[k])
 
     def is_correct(self, answer_id):
+        """
+        Takes an answer_id
+        Returns true if the problem is correct OR partially correct.
+        """
         if answer_id in self.cmap:
             return self.cmap[answer_id]['correctness'] in ['correct', 'partially-correct']
+        return None
+
+    def is_partially_correct(self, answer_id):
+        """
+        Takes an answer_id
+        Returns true if the problem is partially correct.
+        """
+        if answer_id in self.cmap:
+            return self.cmap[answer_id]['correctness'] == 'partially-correct'
         return None
 
     def is_queued(self, answer_id):
@@ -118,7 +137,7 @@ class CorrectMap(object):
             return npoints
         elif self.is_correct(answer_id):
             return 1
-         # if not correct and no points have been assigned, return 0
+        # if not correct and no points have been assigned, return 0
         return 0
 
     def set_property(self, answer_id, property, value):
@@ -145,22 +164,21 @@ class CorrectMap(object):
         return self.get_property(answer_id, 'hintmode', None)
 
     def set_hint_and_mode(self, answer_id, hint, hintmode):
-        '''
+        """
           - hint     : (string) HTML text for hint
           - hintmode : (string) mode for hint display ('always' or 'on_request')
-        '''
+        """
         self.set_property(answer_id, 'hint', hint)
         self.set_property(answer_id, 'hintmode', hintmode)
 
     def update(self, other_cmap):
-        '''
+        """
         Update this CorrectMap with the contents of another CorrectMap
-        '''
+        """
         if not isinstance(other_cmap, CorrectMap):
             raise Exception('CorrectMap.update called with invalid argument %s' % other_cmap)
         self.cmap.update(other_cmap.get_dict())
         self.set_overall_message(other_cmap.get_overall_message())
-
 
     def set_overall_message(self, message_str):
         """ Set a message that applies to the question as a whole,

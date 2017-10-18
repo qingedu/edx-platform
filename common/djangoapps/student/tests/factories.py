@@ -1,48 +1,84 @@
-from student.models import (User, UserProfile, Registration,
-                            CourseEnrollmentAllowed, CourseEnrollment,
-                            PendingEmailChange)
-from django.contrib.auth.models import Group
+"""Provides factories for student models."""
+import random
 from datetime import datetime
-from factory import DjangoModelFactory, SubFactory, PostGenerationMethodCall, post_generation, Sequence
 from uuid import uuid4
+
+import factory
+from django.contrib.auth.models import AnonymousUser, Group, Permission
+from django.contrib.contenttypes.models import ContentType
+from factory import lazy_attribute
+from factory.django import DjangoModelFactory
+from opaque_keys.edx.keys import CourseKey
 from pytz import UTC
 
-# Factories don't have __init__ methods, and are self documenting
-# pylint: disable=W0232
+from course_modes.models import CourseMode
+from student.models import (
+    CourseAccessRole,
+    CourseEnrollment,
+    CourseEnrollmentAllowed,
+    PendingEmailChange,
+    Registration,
+    User,
+    UserProfile,
+    UserStanding
+)
+
+# Factories are self documenting
+# pylint: disable=missing-docstring
+
+TEST_PASSWORD = 'test'
 
 
 class GroupFactory(DjangoModelFactory):
-    FACTORY_FOR = Group
+    class Meta(object):
+        model = Group
+        django_get_or_create = ('name', )
 
-    name = u'staff_MITx/999/Robot_Super_Course'
+    name = factory.Sequence(u'group{0}'.format)
+
+
+class UserStandingFactory(DjangoModelFactory):
+    class Meta(object):
+        model = UserStanding
+
+    user = None
+    account_status = None
+    changed_by = None
 
 
 class UserProfileFactory(DjangoModelFactory):
-    FACTORY_FOR = UserProfile
+    class Meta(object):
+        model = UserProfile
+        django_get_or_create = ('user', )
 
     user = None
-    name = u'Robot Test'
+    name = factory.LazyAttribute(u'{0.user.first_name} {0.user.last_name}'.format)
     level_of_education = None
     gender = u'm'
     mailing_address = None
-    goals = u'World domination'
+    goals = u'Learn a lot'
+    allow_certificate = True
 
 
 class RegistrationFactory(DjangoModelFactory):
-    FACTORY_FOR = Registration
+    class Meta(object):
+        model = Registration
 
     user = None
     activation_key = uuid4().hex.decode('ascii')
 
 
 class UserFactory(DjangoModelFactory):
-    FACTORY_FOR = User
+    class Meta(object):
+        model = User
+        django_get_or_create = ('email', 'username')
 
-    username = Sequence(u'robot{0}'.format)
-    email = Sequence(u'robot+test+{0}@edx.org'.format)
-    password = PostGenerationMethodCall('set_password',
-                                        'test')
-    first_name = Sequence(u'Robot{0}'.format)
+    _DEFAULT_PASSWORD = 'test'
+
+    username = factory.Sequence(u'robot{0}'.format)
+    email = factory.Sequence(u'robot+test+{0}@edx.org'.format)
+    password = factory.PostGenerationMethodCall('set_password', _DEFAULT_PASSWORD)
+    first_name = factory.Sequence(u'Robot{0}'.format)
     last_name = 'Test'
     is_staff = False
     is_active = True
@@ -50,8 +86,8 @@ class UserFactory(DjangoModelFactory):
     last_login = datetime(2012, 1, 1, tzinfo=UTC)
     date_joined = datetime(2011, 1, 1, tzinfo=UTC)
 
-    @post_generation
-    def profile(obj, create, extracted, **kwargs):
+    @factory.post_generation
+    def profile(obj, create, extracted, **kwargs):  # pylint: disable=unused-argument, no-self-argument
         if create:
             obj.save()
             return UserProfileFactory.create(user=obj, **kwargs)
@@ -60,23 +96,56 @@ class UserFactory(DjangoModelFactory):
         else:
             return None
 
+    @factory.post_generation
+    def groups(self, create, extracted, **kwargs):
+        if extracted is None:
+            return
+
+        if isinstance(extracted, basestring):
+            extracted = [extracted]
+
+        for group_name in extracted:
+            self.groups.add(GroupFactory.simple_generate(create, name=group_name))
+
+
+class AnonymousUserFactory(factory.Factory):
+    class Meta(object):
+        model = AnonymousUser
+
 
 class AdminFactory(UserFactory):
     is_staff = True
 
 
-class CourseEnrollmentFactory(DjangoModelFactory):
-    FACTORY_FOR = CourseEnrollment
+class SuperuserFactory(UserFactory):
+    is_superuser = True
 
-    user = SubFactory(UserFactory)
-    course_id = u'edX/toy/2012_Fall'
+
+class CourseEnrollmentFactory(DjangoModelFactory):
+    class Meta(object):
+        model = CourseEnrollment
+
+    user = factory.SubFactory(UserFactory)
+    course = factory.SubFactory(
+        'openedx.core.djangoapps.content.course_overviews.tests.factories.CourseOverviewFactory',
+    )
+
+
+class CourseAccessRoleFactory(DjangoModelFactory):
+    class Meta(object):
+        model = CourseAccessRole
+
+    user = factory.SubFactory(UserFactory)
+    course_id = CourseKey.from_string('edX/toy/2012_Fall')
+    role = 'TestRole'
 
 
 class CourseEnrollmentAllowedFactory(DjangoModelFactory):
-    FACTORY_FOR = CourseEnrollmentAllowed
+    class Meta(object):
+        model = CourseEnrollmentAllowed
 
     email = 'test@edx.org'
-    course_id = 'edX/test/2012_Fall'
+    course_id = CourseKey.from_string('edX/toy/2012_Fall')
 
 
 class PendingEmailChangeFactory(DjangoModelFactory):
@@ -86,8 +155,24 @@ class PendingEmailChangeFactory(DjangoModelFactory):
     new_email: sequence of new+email+{}@edx.org
     activation_key: sequence of integers, padded to 30 characters
     """
-    FACTORY_FOR = PendingEmailChange
+    class Meta(object):
+        model = PendingEmailChange
 
-    user = SubFactory(UserFactory)
-    new_email = Sequence(u'new+email+{0}@edx.org'.format)
-    activation_key = Sequence(u'{:0<30d}'.format)
+    user = factory.SubFactory(UserFactory)
+    new_email = factory.Sequence(u'new+email+{0}@edx.org'.format)
+    activation_key = factory.Sequence(u'{:0<30d}'.format)
+
+
+class ContentTypeFactory(DjangoModelFactory):
+    class Meta(object):
+        model = ContentType
+
+    app_label = factory.Faker('app_name')
+
+
+class PermissionFactory(DjangoModelFactory):
+    class Meta(object):
+        model = Permission
+
+    codename = factory.Faker('codename')
+    content_type = factory.SubFactory(ContentTypeFactory)

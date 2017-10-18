@@ -4,10 +4,12 @@ import argparse
 import os
 import sys
 
+
 # I want this:
-#   ERROR: test_update_and_fetch (mitx.cms.djangoapps.contentstore.tests.test_course_settings.CourseDetailsViewTest)
+#   ERROR: test_update_and_fetch (edx-platform.cms.djangoapps.contentstore.tests.test_course_settings.CourseDetailsViewTest)
 # to become:
 #   test --settings=cms.envs.test --pythonpath=. -s cms/djangoapps/contentstore/tests/test_course_settings.py:CourseDetailsViewTest.test_update_and_fetch
+
 
 def find_full_path(path_to_file):
     """Find the full path where we only have a relative path from somewhere in the tree."""
@@ -16,9 +18,12 @@ def find_full_path(path_to_file):
         if os.path.exists(full):
             return full
 
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Run just one test")
     parser.add_argument('--nocapture', '-s', action='store_true', help="Don't capture stdout (any stdout output will be printed immediately)")
+    parser.add_argument('--pdb', action='store_true', help="Use pdb for test errors")
+    parser.add_argument('--pdb-fail', action='store_true', help="Use pdb for test failures")
     parser.add_argument('words', metavar="WORDS", nargs='+', help="The description of a test failure, like 'ERROR: test_set_missing_field (courseware.tests.test_model_data.TestStudentModuleStorage)'")
 
     args = parser.parse_args(argv)
@@ -30,9 +35,13 @@ def main(argv):
     if words[0].endswith(':'):
         del words[0]
 
-    test_method = words[0]
-    test_path = words[1].split('.')
-    if test_path[0] == 'mitx':
+    if len(words) == 1:
+        test_path, test_method = words[0].rsplit('.', 1)
+        test_path = test_path.split('.')
+    else:
+        test_method = words[0]
+        test_path = words[1].split('.')
+    if test_path[0] == 'edx-platform':
         del test_path[0]
     test_class = test_path[-1]
     del test_path[-1]
@@ -41,20 +50,24 @@ def main(argv):
     test_py_path = find_full_path(test_py_path)
     test_spec = "%s:%s.%s" % (test_py_path, test_class, test_method)
 
-    settings = None
+    system = None
     if test_py_path.startswith('cms'):
-        settings = 'cms.envs.test'
+        system = 'cms'
     elif test_py_path.startswith('lms'):
-        settings = 'lms.envs.test'
+        system = 'lms'
 
-    if settings:
+    if system:
         # Run as a django test suite
         from django.core import management
 
-        django_args = ["django-admin.py", "test", "--pythonpath=."]
-        django_args.append("--settings=%s" % settings)
+        os.environ['DJANGO_SETTINGS_MODULE'] = system + '.envs.test'
+        django_args = ["./manage.py", "test"]
         if args.nocapture:
             django_args.append("-s")
+        if args.pdb:
+            django_args.append("--pdb")
+        if args.pdb_fail:
+            django_args.append("--pdb-fail")
         django_args.append(test_spec)
 
         print " ".join(django_args)

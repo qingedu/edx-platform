@@ -1,9 +1,12 @@
-from django.conf.urls.defaults import url, patterns
+"""
+Base urls for the django_comment_client.
+"""
+from django.conf.urls import patterns, url
 
-urlpatterns = patterns('django_comment_client.base.views',  # nopep8
+urlpatterns = patterns(
+    'django_comment_client.base.views',
+
     url(r'upload$', 'upload', name='upload'),
-    url(r'users/(?P<user_id>\w+)/update_moderator_status$', 'update_moderator_status', name='update_moderator_status'),
-    url(r'threads/tags/autocomplete$', 'tags_autocomplete', name='tags_autocomplete'),
     url(r'threads/(?P<thread_id>[\w\-]+)/update$', 'update_thread', name='update_thread'),
     url(r'threads/(?P<thread_id>[\w\-]+)/reply$', 'create_comment', name='create_comment'),
     url(r'threads/(?P<thread_id>[\w\-]+)/delete', 'delete_thread', name='delete_thread'),
@@ -17,7 +20,6 @@ urlpatterns = patterns('django_comment_client.base.views',  # nopep8
     url(r'threads/(?P<thread_id>[\w\-]+)/follow$', 'follow_thread', name='follow_thread'),
     url(r'threads/(?P<thread_id>[\w\-]+)/unfollow$', 'unfollow_thread', name='unfollow_thread'),
     url(r'threads/(?P<thread_id>[\w\-]+)/close$', 'openclose_thread', name='openclose_thread'),
-
     url(r'comments/(?P<comment_id>[\w\-]+)/update$', 'update_comment', name='update_comment'),
     url(r'comments/(?P<comment_id>[\w\-]+)/endorse$', 'endorse_comment', name='endorse_comment'),
     url(r'comments/(?P<comment_id>[\w\-]+)/reply$', 'create_sub_comment', name='create_sub_comment'),
@@ -28,8 +30,7 @@ urlpatterns = patterns('django_comment_client.base.views',  # nopep8
     url(r'comments/(?P<comment_id>[\w\-]+)/flagAbuse$', 'flag_abuse_for_comment', name='flag_abuse_for_comment'),
     url(r'comments/(?P<comment_id>[\w\-]+)/unFlagAbuse$', 'un_flag_abuse_for_comment', name='un_flag_abuse_for_comment'),
     url(r'^(?P<commentable_id>[\w\-.]+)/threads/create$', 'create_thread', name='create_thread'),
-    # TODO should we search within the board?
-    url(r'^(?P<commentable_id>[\w\-.]+)/threads/search_similar$', 'search_similar_threads', name='search_similar_threads'),
     url(r'^(?P<commentable_id>[\w\-.]+)/follow$', 'follow_commentable', name='follow_commentable'),
     url(r'^(?P<commentable_id>[\w\-.]+)/unfollow$', 'unfollow_commentable', name='unfollow_commentable'),
+    url(r'users$', 'users', name='users'),
 )

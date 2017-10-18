@@ -1,6 +1,10 @@
-from django.conf.urls.defaults import url, patterns, include
+"""
+Urls for the django_comment_client.
+"""
+from django.conf.urls import include, patterns, url
 
-urlpatterns = patterns('',  # nopep8
-    url(r'forum/?', include('django_comment_client.forum.urls')),
+urlpatterns = patterns(
+    '',
+
     url(r'', include('django_comment_client.base.urls')),
 )

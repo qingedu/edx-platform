@@ -1,13 +1,13 @@
-<%! from django.utils.translation import ugettext as _ %>
-<%! from django.core.urlresolvers import reverse %>
 <%inherit file="../base.html" />
+<%!
+from django.utils.translation import ugettext as _
+from django.core.urlresolvers import reverse
+%>
 
 <%namespace name='static' file='../static_content.html'/>
 
 %if not user_logged_in:
-<%block name="bodyclass">
-  not-signedin
-</%block>
+<%block name="bodyclass">not-signedin view-activation</%block>
 %endif
 
 <%block name="content">
@@ -25,7 +25,7 @@
       %if user_logged_in:
         ${_("Visit your {link_start}dashboard{link_end} to see your courses.").format(link_start='<a href="/">', link_end='</a>')}
       %else:
-        ${_("You can now {link_start}login{link_end}.").format(link_start='<a href="{url}">'.format(url=reverse('login')), link_end='</a>')}
+        ${_("You can now {link_start}sign in{link_end}.").format(link_start='<a href="{url}">'.format(url=reverse('login')), link_end='</a>')}
       %endif
     </p>
   </section>

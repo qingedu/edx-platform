@@ -1,56 +1,50 @@
-<section id="textbox_${id}" class="textbox">
-  <textarea rows="${rows}" cols="${cols}" name="input_${id}" aria-describedby="answer_${id}" id="input_${id}"
-       % if hidden:
+<%page expression_filter="h"/>
+<%!
+from django.utils.translation import ugettext as _
+from openedx.core.djangolib.markup import HTML
+%>
+<div id="textbox_${id}" class="capa_inputtype textbox cminput">
+  % if response_data['label']:
+    <label class="problem-group-label" for="cm-textarea-${id}">${response_data['label']}</label>
+  % else:
+    <label class="sr problem-group-label" for="cm-textarea-${id}">${_('Code Editor')}</label>
+  % endif
+  <textarea rows="${rows}" cols="${cols}" name="input_${id}"
+            aria-label="${aria_label}"
+            aria-describedby="answer_${id}"
+            id="input_${id}"
+            tabindex="0"
+            data-mode="${mode}"
+            data-tabsize="${tabsize}"
+            % if linenumbers:
+            data-linenums="true"
+            % endif
+            % if hidden:
       	    style="display:none;"
-       % endif
-  >${value|h}</textarea>
+            % endif
+  >${value}</textarea>
+  <span class="cm-editor-exit-message capa-message" id="cm-editor-exit-message-${id}">
+    ${code_mirror_exit_message}
+  </span>
 
-  <div class="grader-status">
-    % if status == 'unsubmitted':
-      <span class="unanswered" style="display:inline-block;" id="status_${id}" aria-describedby="input_${id}"><span class="sr">Status: </span>Unanswered</span>
-    % elif status == 'correct':
-      <span class="correct" id="status_${id}" aria-describedby="input_${id}"><span class="sr">Status: </span>Correct</span>
-    % elif status == 'incorrect':
-      <span class="incorrect" id="status_${id}" aria-describedby="input_${id}"><span class="sr">Status: </span>Incorrect</span>
-    % elif status == 'queued':
-      <span class="processing" id="status_${id}" aria-describedby="input_${id}"><span class="sr">Status: </span>Queued</span>
-      <span style="display:none;" class="xqueue" id="${id}" >${queue_len}</span>
+  <div class="grader-status" tabindex="-1">
+
+    <%include file="status_span.html" args="status=status, status_id=id"/>
+
+    % if status == 'queued':
+      <span style="display:none;" class="xqueue" id="${id}">${queue_len}</span>
     % endif
 
     % if hidden:
       <div style="display:none;" name="${hidden}" inputid="input_${id}" />
     % endif
 
-    <p class="debug">${status}</p>
+    <p class="debug">${status.display_name}</p>
   </div>
 
   <span id="answer_${id}"></span>
 
   <div class="external-grader-message">
-    ${msg|n}
+    ${HTML(msg)}
   </div>
-
-  <script>
-    // Note: We need to make the area follow the CodeMirror for this to work.
-    $(function(){
-      var cm = CodeMirror.fromTextArea(document.getElementById("input_${id}"), {
-        % if linenumbers == 'true':
-        lineNumbers: true,
-        % endif
-        mode: "${mode}",
-        matchBrackets: true,
-        lineWrapping: true,
-        indentUnit: "${tabsize}",
-        tabSize: "${tabsize}",
-        indentWithTabs: false,
-        extraKeys: {
-            "Tab": function(cm) {
-                cm.replaceSelection("${' '*tabsize}", "end");
-            }
-        },
-        smartIndent: false
-      });
-      $("#textbox_${id}").find('.CodeMirror-scroll').height(${int(13.5*eval(rows))});
-    });
-  </script>
-</section>
+</div>

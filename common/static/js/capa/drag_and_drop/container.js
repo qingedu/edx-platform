@@ -1,9 +1,9 @@
-(function (requirejs, require, define) {
-define(['logme'], function (logme) {
-    return Container;
+(function(requirejs, require, define) {
+    define([], function() {
+        return Container;
 
-    function Container(state) {
-        state.containerEl = $(
+        function Container(state) {
+            state.containerEl = $(
             '<div ' +
                 'style=" ' +
                     'clear: both; ' +
@@ -14,7 +14,7 @@ define(['logme'], function (logme) {
             '></div>'
         );
 
-        $('#inputtype_' + state.problemId).before(state.containerEl);
-    }
-}); // End-of: define(['logme'], function (logme) {
+            $('#inputtype_' + state.problemId).before(state.containerEl);
+        }
+    }); // End-of: define([], function () {
 }(RequireJS.requirejs, RequireJS.require, RequireJS.define)); // End-of: (function (requirejs, require, define) {

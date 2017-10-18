@@ -1,7 +1,8 @@
-#pylint: disable=C0111
-#pylint: disable=W0621
+# pylint: disable=missing-docstring
+# pylint: disable=redefined-outer-name
+# pylint: disable=unused-argument
 
-from lettuce import world, step
+from lettuce import step, world
 
 
 @step('I click on View Courseware')
@@ -12,6 +13,16 @@ def i_click_on_view_courseware(step):
 @step('I click on the "([^"]*)" tab$')
 def i_click_on_the_tab(step, tab_text):
     world.click_link(tab_text)
+
+
+@step('I click the "([^"]*)" button$')
+def i_click_on_the_button(step, data_attr):
+    world.click_button(data_attr)
+
+
+@step('I click on the "([^"]*)" link$')
+def i_click_on_the_link(step, link_text):
+    world.click_link(link_text)
 
 
 @step('I visit the courseware URL$')

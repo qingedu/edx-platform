@@ -1,157 +1,241 @@
 from django.conf import settings
-from django.conf.urls import patterns, include, url
+from django.conf.urls import include, patterns, url
+from django.conf.urls.static import static
+from django.contrib.admin import autodiscover as django_autodiscover
+from django.utils.translation import ugettext_lazy as _
+from ratelimitbackend import admin
 
-# Import this file so it can do its work, even though we don't use the name.
-# pylint: disable=W0611
-from . import one_time_startup
-
-# There is a course creators admin table.
-from django.contrib import admin
-admin.autodiscover()
-
-urlpatterns = ('',  # nopep8
-    url(r'^$', 'contentstore.views.howitworks', name='homepage'),
-    url(r'^listing', 'contentstore.views.index', name='index'),
-    url(r'^edit/(?P<location>.*?)$', 'contentstore.views.edit_unit', name='edit_unit'),
-    url(r'^subsection/(?P<location>.*?)$', 'contentstore.views.edit_subsection', name='edit_subsection'),
-    url(r'^preview_component/(?P<location>.*?)$', 'contentstore.views.preview_component', name='preview_component'),
-    url(r'^save_item$', 'contentstore.views.save_item', name='save_item'),
-    url(r'^delete_item$', 'contentstore.views.delete_item', name='delete_item'),
-    url(r'^create_item$', 'contentstore.views.create_item', name='create_item'),
-    url(r'^create_draft$', 'contentstore.views.create_draft', name='create_draft'),
-    url(r'^publish_draft$', 'contentstore.views.publish_draft', name='publish_draft'),
-    url(r'^unpublish_unit$', 'contentstore.views.unpublish_unit', name='unpublish_unit'),
-    url(r'^create_new_course', 'contentstore.views.create_new_course', name='create_new_course'),
-    url(r'^reorder_static_tabs', 'contentstore.views.reorder_static_tabs', name='reorder_static_tabs'),
-
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<name>[^/]+)$',
-        'contentstore.views.course_index', name='course_index'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/import/(?P<name>[^/]+)$',
-        'contentstore.views.import_course', name='import_course'),
-
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/export/(?P<name>[^/]+)$',
-        'contentstore.views.export_course', name='export_course'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/generate_export/(?P<name>[^/]+)$',
-        'contentstore.views.generate_export_course', name='generate_export_course'),
-
-    url(r'^preview/modx/(?P<preview_id>[^/]*)/(?P<location>.*?)/(?P<dispatch>[^/]*)$',
-        'contentstore.views.preview_dispatch', name='preview_dispatch'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<coursename>[^/]+)/upload_asset$',
-        'contentstore.views.upload_asset', name='upload_asset'),
+from cms.djangoapps.contentstore.views.organization import OrganizationListView
 
 
-    url(r'^manage_users/(?P<location>.*?)$', 'contentstore.views.manage_users', name='manage_users'),
-    url(r'^add_user/(?P<location>.*?)$',
-        'contentstore.views.add_user', name='add_user'),
-    url(r'^remove_user/(?P<location>.*?)$',
-        'contentstore.views.remove_user', name='remove_user'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<name>[^/]+)/remove_user$',
-        'contentstore.views.remove_user', name='remove_user'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/info/(?P<name>[^/]+)$',
-        'contentstore.views.course_info', name='course_info'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/course_info/updates/(?P<provided_id>.*)$',
-        'contentstore.views.course_info_updates', name='course_info_json'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-details/(?P<name>[^/]+)$',
-        'contentstore.views.get_course_settings', name='settings_details'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-grading/(?P<name>[^/]+)$',
-        'contentstore.views.course_config_graders_page', name='settings_grading'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-details/(?P<name>[^/]+)/section/(?P<section>[^/]+).*$',
-        'contentstore.views.course_settings_updates', name='course_settings'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-grading/(?P<name>[^/]+)/(?P<grader_index>.*)$',
-        'contentstore.views.course_grader_updates', name='course_settings'),
-    # This is the URL to initially render the course advanced settings.
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-advanced/(?P<name>[^/]+)$',
-        'contentstore.views.course_config_advanced_page', name='course_advanced_settings'),
-    # This is the URL used by BackBone for updating and re-fetching the model.
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/settings-advanced/(?P<name>[^/]+)/update.*$',
-        'contentstore.views.course_advanced_updates', name='course_advanced_settings_updates'),
+django_autodiscover()
+admin.site.site_header = _('Studio Administration')
+admin.site.site_title = admin.site.site_header
 
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/(?P<category>[^/]+)/(?P<name>[^/]+)/gradeas.*$',
-        'contentstore.views.assignment_type_update', name='assignment_type_update'),
+# Pattern to match a course key or a library key
+COURSELIKE_KEY_PATTERN = r'(?P<course_key_string>({}|{}))'.format(
+    r'[^/]+/[^/]+/[^/]+', r'[^/:]+:[^/+]+\+[^/+]+(\+[^/]+)?'
+)
 
-    url(r'^pages/(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<coursename>[^/]+)$',
-        'contentstore.views.static_pages',
-        name='static_pages'),
-    url(r'^edit_tabs/(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<coursename>[^/]+)$',
-        'contentstore.views.edit_tabs', name='edit_tabs'),
+# Pattern to match a library key only
+LIBRARY_KEY_PATTERN = r'(?P<library_key_string>library-v1:[^/+]+\+[^/+]+)'
 
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/assets/(?P<name>[^/]+)$',
-        'contentstore.views.asset_index', name='asset_index'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/assets/(?P<name>[^/]+)/remove$',
-        'contentstore.views.assets.remove_asset', name='remove_asset'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/textbooks/(?P<name>[^/]+)$',
-        'contentstore.views.textbook_index', name='textbook_index'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/textbooks/(?P<name>[^/]+)/new$',
-        'contentstore.views.create_textbook', name='create_textbook'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/textbooks/(?P<name>[^/]+)/(?P<tid>\d[^/]*)$',
-        'contentstore.views.textbook_by_id', name='textbook_by_id'),
+urlpatterns = patterns(
+    '',
 
-    # this is a generic method to return the data/metadata associated with a xmodule
-    url(r'^module_info/(?P<module_location>.*)$',
-        'contentstore.views.module_info', name='module_info'),
+    url(r'', include('student.urls')),
 
+    url(r'^transcripts/upload$', 'contentstore.views.upload_transcripts', name='upload_transcripts'),
+    url(r'^transcripts/download$', 'contentstore.views.download_transcripts', name='download_transcripts'),
+    url(r'^transcripts/check$', 'contentstore.views.check_transcripts', name='check_transcripts'),
+    url(r'^transcripts/choose$', 'contentstore.views.choose_transcripts', name='choose_transcripts'),
+    url(r'^transcripts/replace$', 'contentstore.views.replace_transcripts', name='replace_transcripts'),
+    url(r'^transcripts/rename$', 'contentstore.views.rename_transcripts', name='rename_transcripts'),
+    url(r'^transcripts/save$', 'contentstore.views.save_transcripts', name='save_transcripts'),
 
-    # temporary landing page for a course
-    url(r'^edge/(?P<org>[^/]+)/(?P<course>[^/]+)/course/(?P<coursename>[^/]+)$',
-        'contentstore.views.landing', name='landing'),
+    url(r'^preview/xblock/(?P<usage_key_string>.*?)/handler/(?P<handler>[^/]*)(?:/(?P<suffix>.*))?$',
+        'contentstore.views.preview_handler', name='preview_handler'),
+
+    url(r'^xblock/(?P<usage_key_string>.*?)/handler/(?P<handler>[^/]*)(?:/(?P<suffix>.*))?$',
+        'contentstore.views.component_handler', name='component_handler'),
+
+    url(r'^xblock/resource/(?P<block_type>[^/]*)/(?P<uri>.*)$',
+        'openedx.core.djangoapps.common_views.xblock.xblock_resource', name='xblock_resource_url'),
 
     url(r'^not_found$', 'contentstore.views.not_found', name='not_found'),
     url(r'^server_error$', 'contentstore.views.server_error', name='server_error'),
+    url(r'^organizations$', OrganizationListView.as_view(), name='organizations'),
 
-    # temporary landing page for edge
-    url(r'^edge$', 'contentstore.views.edge', name='edge'),
     # noop to squelch ajax errors
     url(r'^event$', 'contentstore.views.event', name='event'),
 
-    url(r'^heartbeat$', include('heartbeat.urls')),
+    url(r'^xmodule/', include('pipeline_js.urls')),
+    url(r'^heartbeat$', include('openedx.core.djangoapps.heartbeat.urls')),
+
+    url(r'^user_api/', include('openedx.core.djangoapps.user_api.legacy_urls')),
+
+    url(r'^i18n/', include('django.conf.urls.i18n')),
+
+    # User API endpoints
+    url(r'^api/user/', include('openedx.core.djangoapps.user_api.urls')),
+
+    # Update session view
+    url(
+        r'^lang_pref/session_language',
+        'openedx.core.djangoapps.lang_pref.views.update_session_language',
+        name='session_language'
+    ),
+
+    # Darklang View to change the preview language (or dark language)
+    url(r'^update_lang/', include('openedx.core.djangoapps.dark_lang.urls', namespace='dark_lang')),
+
+    # URLs for managing theming
+    url(r'^theming/', include('openedx.core.djangoapps.theming.urls', namespace='theming')),
+
+    # For redirecting to help pages.
+    url(r'^help_token/', include('help_tokens.urls')),
+    url(r'^api/', include('cms.djangoapps.api.urls', namespace='api')),
 )
 
-# User creation and updating views
-urlpatterns += (
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/checklists/(?P<name>[^/]+)$', 'contentstore.views.get_checklists', name='checklists'),
-    url(r'^(?P<org>[^/]+)/(?P<course>[^/]+)/checklists/(?P<name>[^/]+)/update(/)?(?P<checklist_index>.+)?.*$',
-        'contentstore.views.update_checklist', name='checklists_updates'),
-    url(r'^howitworks$', 'contentstore.views.howitworks', name='howitworks'),
-    url(r'^signup$', 'contentstore.views.signup', name='signup'),
+# restful api
+urlpatterns += patterns(
+    'contentstore.views',
 
-    url(r'^create_account$', 'student.views.create_account'),
-    url(r'^activate/(?P<key>[^/]*)$', 'student.views.activate_account', name='activate'),
+    url(r'^$', 'howitworks', name='homepage'),
+    url(r'^howitworks$', 'howitworks'),
+    url(r'^signup$', 'signup', name='signup'),
+    url(r'^signin$', 'login_page', name='login'),
+    url(r'^request_course_creator$', 'request_course_creator', name='request_course_creator'),
 
-    # form page
-    url(r'^login$', 'contentstore.views.old_login_redirect', name='old_login'),
-    url(r'^signin$', 'contentstore.views.login_page', name='login'),
-    # ajax view that actually does the work
-    url(r'^login_post$', 'student.views.login_user', name='login_post'),
-
-    url(r'^logout$', 'student.views.logout_user', name='logout'),
+    url(r'^course_team/{}(?:/(?P<email>.+))?$'.format(COURSELIKE_KEY_PATTERN), 'course_team_handler'),
+    url(r'^course_info/{}$'.format(settings.COURSE_KEY_PATTERN), 'course_info_handler'),
+    url(
+        r'^course_info_update/{}/(?P<provided_id>\d+)?$'.format(settings.COURSE_KEY_PATTERN),
+        'course_info_update_handler'
+    ),
+    url(r'^home/?$', 'course_listing', name='home'),
+    url(
+        r'^course/{}/search_reindex?$'.format(settings.COURSE_KEY_PATTERN),
+        'course_search_index_handler',
+        name='course_search_index_handler'
+    ),
+    url(r'^course/{}?$'.format(settings.COURSE_KEY_PATTERN), 'course_handler', name='course_handler'),
+    url(r'^course_notifications/{}/(?P<action_state_id>\d+)?$'.format(settings.COURSE_KEY_PATTERN),
+        'course_notifications_handler'),
+    url(r'^course_rerun/{}$'.format(settings.COURSE_KEY_PATTERN), 'course_rerun_handler', name='course_rerun_handler'),
+    url(r'^container/{}$'.format(settings.USAGE_KEY_PATTERN), 'container_handler'),
+    url(r'^orphan/{}$'.format(settings.COURSE_KEY_PATTERN), 'orphan_handler'),
+    url(r'^assets/{}/{}?$'.format(settings.COURSE_KEY_PATTERN, settings.ASSET_KEY_PATTERN), 'assets_handler'),
+    url(r'^import/{}$'.format(COURSELIKE_KEY_PATTERN), 'import_handler'),
+    url(r'^import_status/{}/(?P<filename>.+)$'.format(COURSELIKE_KEY_PATTERN), 'import_status_handler'),
+    # rest api for course import/export
+    url(
+        r'^api/courses/',
+        include('cms.djangoapps.contentstore.api.urls', namespace='courses_api')
+    ),
+    url(r'^export/{}$'.format(COURSELIKE_KEY_PATTERN), 'export_handler'),
+    url(r'^export_output/{}$'.format(COURSELIKE_KEY_PATTERN), 'export_output_handler'),
+    url(r'^export_status/{}$'.format(COURSELIKE_KEY_PATTERN), 'export_status_handler'),
+    url(r'^xblock/outline/{}$'.format(settings.USAGE_KEY_PATTERN), 'xblock_outline_handler'),
+    url(r'^xblock/container/{}$'.format(settings.USAGE_KEY_PATTERN), 'xblock_container_handler'),
+    url(r'^xblock/{}/(?P<view_name>[^/]+)$'.format(settings.USAGE_KEY_PATTERN), 'xblock_view_handler'),
+    url(r'^xblock/{}?$'.format(settings.USAGE_KEY_PATTERN), 'xblock_handler'),
+    url(r'^tabs/{}$'.format(settings.COURSE_KEY_PATTERN), 'tabs_handler'),
+    url(r'^settings/details/{}$'.format(settings.COURSE_KEY_PATTERN), 'settings_handler'),
+    url(r'^settings/grading/{}(/)?(?P<grader_index>\d+)?$'.format(settings.COURSE_KEY_PATTERN), 'grading_handler'),
+    url(r'^settings/advanced/{}$'.format(settings.COURSE_KEY_PATTERN), 'advanced_settings_handler'),
+    url(r'^textbooks/{}$'.format(settings.COURSE_KEY_PATTERN), 'textbooks_list_handler'),
+    url(r'^textbooks/{}/(?P<textbook_id>\d[^/]*)$'.format(settings.COURSE_KEY_PATTERN), 'textbooks_detail_handler'),
+    url(r'^videos/{}(?:/(?P<edx_video_id>[-\w]+))?$'.format(settings.COURSE_KEY_PATTERN), 'videos_handler'),
+    url(r'^video_images/{}(?:/(?P<edx_video_id>[-\w]+))?$'.format(settings.COURSE_KEY_PATTERN), 'video_images_handler'),
+    url(r'^transcript_preferences/{}$'.format(settings.COURSE_KEY_PATTERN), 'transcript_preferences_handler'),
+    url(r'^video_encodings_download/{}$'.format(settings.COURSE_KEY_PATTERN), 'video_encodings_download'),
+    url(r'^group_configurations/{}$'.format(settings.COURSE_KEY_PATTERN), 'group_configurations_list_handler'),
+    url(r'^group_configurations/{}/(?P<group_configuration_id>\d+)(/)?(?P<group_id>\d+)?$'.format(
+        settings.COURSE_KEY_PATTERN), 'group_configurations_detail_handler'),
+    url(r'^api/val/v0/', include('edxval.urls')),
+    url(r'^api/tasks/v0/', include('user_tasks.urls')),
 )
 
-js_info_dict = {
+JS_INFO_DICT = {
     'domain': 'djangojs',
-    'packages': ('cms',),
+    # We need to explicitly include external Django apps that are not in LOCALE_PATHS.
+    'packages': ('openassessment',),
 }
 
-urlpatterns += (
-    # Serve catalog of localized strings to be rendered by Javascript
-    url(r'^jsi18n/$', 'django.views.i18n.javascript_catalog', js_info_dict),
-)
-
-
-if settings.ENABLE_JASMINE:
-    # # Jasmine
-    urlpatterns = urlpatterns + (url(r'^_jasmine/', include('django_jasmine.urls')),)
-
-
-if settings.MITX_FEATURES.get('ENABLE_SERVICE_STATUS'):
+if settings.FEATURES.get('ENABLE_CONTENT_LIBRARIES'):
     urlpatterns += (
-        url(r'^status/', include('service_status.urls')),
+        url(r'^library/{}?$'.format(LIBRARY_KEY_PATTERN),
+            'contentstore.views.library_handler', name='library_handler'),
+        url(r'^library/{}/team/$'.format(LIBRARY_KEY_PATTERN),
+            'contentstore.views.manage_library_users', name='manage_library_users'),
     )
 
-urlpatterns += (url(r'^admin/', include(admin.site.urls)),)
+if settings.FEATURES.get('ENABLE_EXPORT_GIT'):
+    urlpatterns += (url(
+        r'^export_git/{}$'.format(
+            settings.COURSE_KEY_PATTERN,
+        ),
+        'contentstore.views.export_git',
+        name='export_git',
+    ),)
 
-urlpatterns = patterns(*urlpatterns)
+if settings.FEATURES.get('ENABLE_SERVICE_STATUS'):
+    urlpatterns += patterns(
+        '',
+        url(r'^status/', include('openedx.core.djangoapps.service_status.urls')),
+    )
+
+if settings.FEATURES.get('AUTH_USE_CAS'):
+    urlpatterns += (
+        url(r'^cas-auth/login/$', 'openedx.core.djangoapps.external_auth.views.cas_login', name="cas-login"),
+        url(r'^cas-auth/logout/$', 'django_cas.views.logout', {'next_page': '/'}, name="cas-logout"),
+    )
+
+urlpatterns += patterns('', url(r'^admin/', include(admin.site.urls)),)
+
+# enable entrance exams
+if settings.FEATURES.get('ENTRANCE_EXAMS'):
+    urlpatterns += (
+        url(r'^course/{}/entrance_exam/?$'.format(settings.COURSE_KEY_PATTERN), 'contentstore.views.entrance_exam'),
+    )
+
+# Enable Web/HTML Certificates
+if settings.FEATURES.get('CERTIFICATES_HTML_VIEW'):
+    urlpatterns += (
+        url(r'^certificates/activation/{}/'.format(settings.COURSE_KEY_PATTERN),
+            'contentstore.views.certificates.certificate_activation_handler'),
+        url(r'^certificates/{}/(?P<certificate_id>\d+)/signatories/(?P<signatory_id>\d+)?$'.format(
+            settings.COURSE_KEY_PATTERN), 'contentstore.views.certificates.signatory_detail_handler'),
+        url(r'^certificates/{}/(?P<certificate_id>\d+)?$'.format(settings.COURSE_KEY_PATTERN),
+            'contentstore.views.certificates.certificates_detail_handler'),
+        url(r'^certificates/{}$'.format(settings.COURSE_KEY_PATTERN),
+            'contentstore.views.certificates.certificates_list_handler')
+    )
+
+# Maintenance Dashboard
+urlpatterns += patterns(
+    '',
+    url(r'^maintenance/', include('maintenance.urls', namespace='maintenance')),
+)
+
+if settings.DEBUG:
+    try:
+        from .urls_dev import urlpatterns as dev_urlpatterns
+        urlpatterns += dev_urlpatterns
+    except ImportError:
+        pass
+
+    urlpatterns += static(
+        settings.VIDEO_IMAGE_SETTINGS['STORAGE_KWARGS']['base_url'],
+        document_root=settings.VIDEO_IMAGE_SETTINGS['STORAGE_KWARGS']['location']
+    )
+
+    urlpatterns += static(
+        settings.VIDEO_TRANSCRIPTS_SETTINGS['STORAGE_KWARGS']['base_url'],
+        document_root=settings.VIDEO_TRANSCRIPTS_SETTINGS['STORAGE_KWARGS']['location']
+    )
+
+if 'debug_toolbar' in settings.INSTALLED_APPS:
+    import debug_toolbar
+    urlpatterns += (
+        url(r'^__debug__/', include(debug_toolbar.urls)),
+    )
+
+# UX reference templates
+urlpatterns += patterns(
+    '',
+    url(r'^template/(?P<template>.+)$', 'openedx.core.djangoapps.debug.views.show_reference_template'),
+)
 
 # Custom error pages
-#pylint: disable=C0103
+# These are used by Django to render these error codes. Do not remove.
+# pylint: disable=invalid-name
 handler404 = 'contentstore.views.render_404'
 handler500 = 'contentstore.views.render_500'
+
+# display error page templates, for testing purposes
+urlpatterns += (
+    url(r'^404$', handler404),
+    url(r'^500$', handler500),
+)

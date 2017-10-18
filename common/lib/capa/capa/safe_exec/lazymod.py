@@ -7,6 +7,7 @@ in the public domain.
 
 import sys
 
+
 class LazyModule(object):
     """A lazy module proxy."""
 
@@ -38,5 +39,5 @@ class LazyModule(object):
                 submod = getattr(mod, name)
             except ImportError:
                 raise AttributeError("'module' object has no attribute %r" % name)
-            self.__dict__[name] = LazyModule(subname, submod)
+            self.__dict__[name] = LazyModule(subname)
             return self.__dict__[name]

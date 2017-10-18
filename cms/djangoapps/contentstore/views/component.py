@@ -1,331 +1,468 @@
-import json
+from __future__ import absolute_import
+
 import logging
-from collections import defaultdict
 
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods
-from django.core.exceptions import PermissionDenied
-from django_future.csrf import ensure_csrf_cookie
 from django.conf import settings
-from xmodule.modulestore.exceptions import ItemNotFoundError, InvalidLocationError
-from mitxmako.shortcuts import render_to_response
-
-from xmodule.modulestore import Location
-from xmodule.modulestore.django import modulestore
-from xmodule.util.date_utils import get_default_time_display
-
-from xblock.core import Scope
-from util.json_request import expect_json, JsonResponse
-
-from contentstore.module_info_model import get_module_info, set_module_info
-from contentstore.utils import get_modulestore, get_lms_link_for_item, \
-    compute_unit_state, UnitState, get_course_for_item
-
-from models.settings.course_grading import CourseGradingModel
-
-from .requests import _xmodule_recurse
-from .access import has_access
-from xmodule.x_module import XModuleDescriptor
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.http import Http404, HttpResponseBadRequest
+from django.utils.translation import ugettext as _
+from django.views.decorators.http import require_GET
+from opaque_keys import InvalidKeyError
+from opaque_keys.edx.asides import AsideUsageKeyV1, AsideUsageKeyV2
+from opaque_keys.edx.keys import UsageKey
+from xblock.core import XBlock
+from xblock.django.request import django_to_webob_request, webob_to_django_response
+from xblock.exceptions import NoSuchHandlerError
 from xblock.plugin import PluginMissingError
+from xblock.runtime import Mixologist
 
-__all__ = ['OPEN_ENDED_COMPONENT_TYPES',
-           'ADVANCED_COMPONENT_POLICY_KEY',
-           'edit_subsection',
-           'edit_unit',
-           'assignment_type_update',
-           'create_draft',
-           'publish_draft',
-           'unpublish_unit',
-           'module_info']
+from contentstore.utils import get_lms_link_for_item, get_xblock_aside_instance, reverse_course_url
+from contentstore.views.helpers import get_parent_xblock, is_unit, xblock_type_display_name
+from contentstore.views.item import StudioEditModuleRuntime, add_container_page_publishing_info, create_xblock_info
+from edxmako.shortcuts import render_to_response
+from student.auth import has_course_author_access
+from xblock_django.api import authorable_xblocks, disabled_xblocks
+from xblock_django.models import XBlockStudioConfigurationFlag
+from xmodule.modulestore.django import modulestore
+from xmodule.modulestore.exceptions import ItemNotFoundError
+
+__all__ = [
+    'container_handler',
+    'component_handler'
+]
 
 log = logging.getLogger(__name__)
 
-# NOTE: edit_unit assumes this list is disjoint from ADVANCED_COMPONENT_TYPES
+# NOTE: This list is disjoint from ADVANCED_COMPONENT_TYPES
 COMPONENT_TYPES = ['discussion', 'html', 'problem', 'video']
 
-OPEN_ENDED_COMPONENT_TYPES = ["combinedopenended", "peergrading"]
-NOTE_COMPONENT_TYPES = ['notes']
-ADVANCED_COMPONENT_TYPES = ['annotatable', 'word_cloud', 'videoalpha'] + OPEN_ENDED_COMPONENT_TYPES + NOTE_COMPONENT_TYPES
-ADVANCED_COMPONENT_CATEGORY = 'advanced'
-ADVANCED_COMPONENT_POLICY_KEY = 'advanced_modules'
+ADVANCED_COMPONENT_TYPES = sorted(set(name for name, class_ in XBlock.load_classes()) - set(COMPONENT_TYPES))
+
+ADVANCED_PROBLEM_TYPES = settings.ADVANCED_PROBLEM_TYPES
+
+CONTAINER_TEMPLATES = [
+    "basic-modal", "modal-button", "edit-xblock-modal",
+    "editor-mode-button", "upload-dialog",
+    "add-xblock-component", "add-xblock-component-button", "add-xblock-component-menu",
+    "add-xblock-component-support-legend", "add-xblock-component-support-level", "add-xblock-component-menu-problem",
+    "xblock-string-field-editor", "xblock-access-editor", "publish-xblock", "publish-history",
+    "unit-outline", "container-message", "container-access", "license-selector",
+]
 
 
-@login_required
-def edit_subsection(request, location):
-    # check that we have permissions to edit this item
-    try:
-        course = get_course_for_item(location)
-    except InvalidLocationError:
-        return HttpResponseBadRequest()
-
-    if not has_access(request.user, course.location):
-        raise PermissionDenied()
-
-    try:
-        item = modulestore().get_item(location, depth=1)
-    except ItemNotFoundError:
-        return HttpResponseBadRequest()
-
-    lms_link = get_lms_link_for_item(location, course_id=course.location.course_id)
-    preview_link = get_lms_link_for_item(location, course_id=course.location.course_id, preview=True)
-
-    # make sure that location references a 'sequential', otherwise return BadRequest
-    if item.location.category != 'sequential':
-        return HttpResponseBadRequest()
-
-    parent_locs = modulestore().get_parent_locations(location, None)
-
-    # we're for now assuming a single parent
-    if len(parent_locs) != 1:
-        logging.error('Multiple (or none) parents have been found for {0}'.format(location))
-
-    # this should blow up if we don't find any parents, which would be erroneous
-    parent = modulestore().get_item(parent_locs[0])
-
-    # remove all metadata from the generic dictionary that is presented in a more normalized UI
-
-    policy_metadata = dict(
-        (field.name, field.read_from(item))
-        for field
-        in item.fields
-        if field.name not in ['display_name', 'start', 'due', 'format'] and field.scope == Scope.settings
-    )
-
-    can_view_live = False
-    subsection_units = item.get_children()
-    for unit in subsection_units:
-        state = compute_unit_state(unit)
-        if state == UnitState.public or state == UnitState.draft:
-            can_view_live = True
-            break
-
-    return render_to_response('edit_subsection.html',
-                              {'subsection': item,
-                               'context_course': course,
-                               'new_unit_category': 'vertical',
-                               'lms_link': lms_link,
-                               'preview_link': preview_link,
-                               'course_graders': json.dumps(CourseGradingModel.fetch(course.location).graders),
-                               'parent_location': course.location,
-                               'parent_item': parent,
-                               'policy_metadata': policy_metadata,
-                               'subsection_units': subsection_units,
-                               'can_view_live': can_view_live
-                               })
-
-
-@login_required
-def edit_unit(request, location):
+def _advanced_component_types(show_unsupported):
     """
-    Display an editing page for the specified module.
+    Return advanced component types which can be created.
 
-    Expects a GET request with the parameter 'id'.
+    Args:
+        show_unsupported: if True, unsupported XBlocks may be included in the return value
 
-    id: A Location URL
+    Returns:
+        A dict of authorable XBlock types and their support levels (see XBlockStudioConfiguration). For example:
+        {
+            "done": "us",  # unsupported
+            "discussion: "fs"  # fully supported
+        }
+        Note that the support level will be "True" for all XBlocks if XBlockStudioConfigurationFlag
+        is not enabled.
     """
-    try:
-        course = get_course_for_item(location)
-    except InvalidLocationError:
-        return HttpResponseBadRequest()
+    enabled_block_types = _filter_disabled_blocks(ADVANCED_COMPONENT_TYPES)
+    if XBlockStudioConfigurationFlag.is_enabled():
+        authorable_blocks = authorable_xblocks(allow_unsupported=show_unsupported)
+        filtered_blocks = {}
+        for block in authorable_blocks:
+            if block.name in enabled_block_types:
+                filtered_blocks[block.name] = block.support_level
+        return filtered_blocks
+    else:
+        all_blocks = {}
+        for block_name in enabled_block_types:
+            all_blocks[block_name] = True
+        return all_blocks
 
-    if not has_access(request.user, course.location):
-        raise PermissionDenied()
 
-    try:
-        item = modulestore().get_item(location, depth=1)
-    except ItemNotFoundError:
-        return HttpResponseBadRequest()
-    lms_link = get_lms_link_for_item(item.location, course_id=course.location.course_id)
+def _load_mixed_class(category):
+    """
+    Load an XBlock by category name, and apply all defined mixins
+    """
+    component_class = XBlock.load_class(category, select=settings.XBLOCK_SELECT_FUNCTION)
+    mixologist = Mixologist(settings.XBLOCK_MIXINS)
+    return mixologist.mix(component_class)
 
-    component_templates = defaultdict(list)
-    for category in COMPONENT_TYPES:
-        component_class = XModuleDescriptor.load_class(category)
-        # add the default template
-        component_templates[category].append((
-            component_class.display_name.default or 'Blank',
-            category,
-            False,  # No defaults have markdown (hardcoded current default)
-            None  # no boilerplate for overrides
-        ))
+
+@require_GET
+@login_required
+def container_handler(request, usage_key_string):
+    """
+    The restful handler for container xblock requests.
+
+    GET
+        html: returns the HTML page for editing a container
+        json: not currently supported
+    """
+    if 'text/html' in request.META.get('HTTP_ACCEPT', 'text/html'):
+
+        try:
+            usage_key = UsageKey.from_string(usage_key_string)
+        except InvalidKeyError:  # Raise Http404 on invalid 'usage_key_string'
+            raise Http404
+        with modulestore().bulk_operations(usage_key.course_key):
+            try:
+                course, xblock, lms_link, preview_lms_link = _get_item_in_course(request, usage_key)
+            except ItemNotFoundError:
+                return HttpResponseBadRequest()
+
+            component_templates = get_component_templates(course)
+            ancestor_xblocks = []
+            parent = get_parent_xblock(xblock)
+            action = request.GET.get('action', 'view')
+
+            is_unit_page = is_unit(xblock)
+            unit = xblock if is_unit_page else None
+
+            while parent and parent.category != 'course':
+                if unit is None and is_unit(parent):
+                    unit = parent
+                ancestor_xblocks.append(parent)
+                parent = get_parent_xblock(parent)
+            ancestor_xblocks.reverse()
+
+            assert unit is not None, "Could not determine unit page"
+            subsection = get_parent_xblock(unit)
+            assert subsection is not None, "Could not determine parent subsection from unit " + unicode(unit.location)
+            section = get_parent_xblock(subsection)
+            assert section is not None, "Could not determine ancestor section from unit " + unicode(unit.location)
+
+            # Fetch the XBlock info for use by the container page. Note that it includes information
+            # about the block's ancestors and siblings for use by the Unit Outline.
+            xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page)
+
+            if is_unit_page:
+                add_container_page_publishing_info(xblock, xblock_info)
+
+            # need to figure out where this item is in the list of children as the
+            # preview will need this
+            index = 1
+            for child in subsection.get_children():
+                if child.location == unit.location:
+                    break
+                index += 1
+
+            return render_to_response('container.html', {
+                'context_course': course,  # Needed only for display of menus at top of page.
+                'action': action,
+                'xblock': xblock,
+                'xblock_locator': xblock.location,
+                'unit': unit,
+                'is_unit_page': is_unit_page,
+                'subsection': subsection,
+                'section': section,
+                'new_unit_category': 'vertical',
+                'outline_url': '{url}?format=concise'.format(url=reverse_course_url('course_handler', course.id)),
+                'ancestor_xblocks': ancestor_xblocks,
+                'component_templates': component_templates,
+                'xblock_info': xblock_info,
+                'draft_preview_link': preview_lms_link,
+                'published_preview_link': lms_link,
+                'templates': CONTAINER_TEMPLATES
+            })
+    else:
+        return HttpResponseBadRequest("Only supports HTML requests")
+
+
+def get_component_templates(courselike, library=False):
+    """
+    Returns the applicable component templates that can be used by the specified course or library.
+    """
+    def create_template_dict(name, category, support_level, boilerplate_name=None, tab="common", hinted=False):
+        """
+        Creates a component template dict.
+
+        Parameters
+            display_name: the user-visible name of the component
+            category: the type of component (problem, html, etc.)
+            support_level: the support level of this component
+            boilerplate_name: name of boilerplate for filling in default values. May be None.
+            hinted: True if hinted problem else False
+            tab: common(default)/advanced, which tab it goes in
+
+        """
+        return {
+            "display_name": name,
+            "category": category,
+            "boilerplate_name": boilerplate_name,
+            "hinted": hinted,
+            "tab": tab,
+            "support_level": support_level
+        }
+
+    def component_support_level(editable_types, name, template=None):
+        """
+        Returns the support level for the given xblock name/template combination.
+
+        Args:
+            editable_types: a QuerySet of xblocks with their support levels
+            name: the name of the xblock
+            template: optional template for the xblock
+
+        Returns:
+            If XBlockStudioConfigurationFlag is enabled, returns the support level
+            (see XBlockStudioConfiguration) or False if this xblock name/template combination
+            has no Studio support at all. If XBlockStudioConfigurationFlag is disabled,
+            simply returns True.
+        """
+        # If the Studio support feature is disabled, return True for all.
+        if not XBlockStudioConfigurationFlag.is_enabled():
+            return True
+        if template is None:
+            template = ""
+        extension_index = template.rfind(".yaml")
+        if extension_index >= 0:
+            template = template[0:extension_index]
+        for block in editable_types:
+            if block.name == name and block.template == template:
+                return block.support_level
+
+        return False
+
+    def create_support_legend_dict():
+        """
+        Returns a dict of settings information for the display of the support level legend.
+        """
+        return {
+            "show_legend": XBlockStudioConfigurationFlag.is_enabled(),
+            "allow_unsupported_xblocks": allow_unsupported,
+            "documentation_label": _("{platform_name} Support Levels:").format(platform_name=settings.PLATFORM_NAME)
+        }
+
+    component_display_names = {
+        'discussion': _("Discussion"),
+        'html': _("HTML"),
+        'problem': _("Problem"),
+        'video': _("Video")
+    }
+
+    component_templates = []
+    categories = set()
+    # The component_templates array is in the order of "advanced" (if present), followed
+    # by the components in the order listed in COMPONENT_TYPES.
+    component_types = COMPONENT_TYPES[:]
+
+    # Libraries do not support discussions
+    if library:
+        component_types = [component for component in component_types if component != 'discussion']
+
+    component_types = _filter_disabled_blocks(component_types)
+
+    # Content Libraries currently don't allow opting in to unsupported xblocks/problem types.
+    allow_unsupported = getattr(courselike, "allow_unsupported_xblocks", False)
+
+    for category in component_types:
+        authorable_variations = authorable_xblocks(allow_unsupported=allow_unsupported, name=category)
+        support_level_without_template = component_support_level(authorable_variations, category)
+        templates_for_category = []
+        component_class = _load_mixed_class(category)
+
+        if support_level_without_template:
+            # add the default template with localized display name
+            # TODO: Once mixins are defined per-application, rather than per-runtime,
+            # this should use a cms mixed-in class. (cpennington)
+            display_name = xblock_type_display_name(category, _('Blank'))  # this is the Blank Advanced problem
+            templates_for_category.append(
+                create_template_dict(display_name, category, support_level_without_template, None, 'advanced')
+            )
+            categories.add(category)
+
         # add boilerplates
-        for template in component_class.templates():
-            component_templates[category].append((
-                template['metadata'].get('display_name'),
-                category,
-                template['metadata'].get('markdown') is not None,
-                template.get('template_id')
-            ))
+        if hasattr(component_class, 'templates'):
+            for template in component_class.templates():
+                filter_templates = getattr(component_class, 'filter_templates', None)
+                if not filter_templates or filter_templates(template, courselike):
+                    template_id = template.get('template_id')
+                    support_level_with_template = component_support_level(
+                        authorable_variations, category, template_id
+                    )
+                    if support_level_with_template:
+                        # Tab can be 'common' 'advanced'
+                        # Default setting is common/advanced depending on the presence of markdown
+                        tab = 'common'
+                        if template['metadata'].get('markdown') is None:
+                            tab = 'advanced'
+                        hinted = template.get('hinted', False)
 
-    # Check if there are any advanced modules specified in the course policy. These modules
-    # should be specified as a list of strings, where the strings are the names of the modules
-    # in ADVANCED_COMPONENT_TYPES that should be enabled for the course.
-    course_advanced_keys = course.advanced_modules
+                        templates_for_category.append(
+                            create_template_dict(
+                                _(template['metadata'].get('display_name')),    # pylint: disable=translation-of-non-string
+                                category,
+                                support_level_with_template,
+                                template_id,
+                                tab,
+                                hinted,
+                            )
+                        )
 
+        # Add any advanced problem types. Note that these are different xblocks being stored as Advanced Problems,
+        # currently not supported in libraries .
+        if category == 'problem' and not library:
+            disabled_block_names = [block.name for block in disabled_xblocks()]
+            advanced_problem_types = [advanced_problem_type for advanced_problem_type in ADVANCED_PROBLEM_TYPES
+                                      if advanced_problem_type['component'] not in disabled_block_names]
+            for advanced_problem_type in advanced_problem_types:
+                component = advanced_problem_type['component']
+                boilerplate_name = advanced_problem_type['boilerplate_name']
+
+                authorable_advanced_component_variations = authorable_xblocks(
+                    allow_unsupported=allow_unsupported, name=component
+                )
+                advanced_component_support_level = component_support_level(
+                    authorable_advanced_component_variations, component, boilerplate_name
+                )
+                if advanced_component_support_level:
+                    try:
+                        component_display_name = xblock_type_display_name(component)
+                    except PluginMissingError:
+                        log.warning('Unable to load xblock type %s to read display_name', component, exc_info=True)
+                    else:
+                        templates_for_category.append(
+                            create_template_dict(
+                                component_display_name,
+                                component,
+                                advanced_component_support_level,
+                                boilerplate_name,
+                                'advanced'
+                            )
+                        )
+                        categories.add(component)
+
+        component_templates.append({
+            "type": category,
+            "templates": templates_for_category,
+            "display_name": component_display_names[category],
+            "support_legend": create_support_legend_dict()
+        })
+
+    # Libraries do not support advanced components at this time.
+    if library:
+        return component_templates
+
+    # Check if there are any advanced modules specified in the course policy.
+    # These modules should be specified as a list of strings, where the strings
+    # are the names of the modules in ADVANCED_COMPONENT_TYPES that should be
+    # enabled for the course.
+    course_advanced_keys = courselike.advanced_modules
+    advanced_component_templates = {
+        "type": "advanced",
+        "templates": [],
+        "display_name": _("Advanced"),
+        "support_legend": create_support_legend_dict()
+    }
+    advanced_component_types = _advanced_component_types(allow_unsupported)
     # Set component types according to course policy file
     if isinstance(course_advanced_keys, list):
         for category in course_advanced_keys:
-            if category in ADVANCED_COMPONENT_TYPES:
-                # Do I need to allow for boilerplates or just defaults on the class? i.e., can an advanced
-                # have more than one entry in the menu? one for default and others for prefilled boilerplates?
+            if category in advanced_component_types.keys() and category not in categories:
+                # boilerplates not supported for advanced components
                 try:
-                    component_class = XModuleDescriptor.load_class(category)
-
-                    component_templates['advanced'].append((
-                        component_class.display_name.default or category,
-                        category,
-                        False,
-                        None  # don't override default data
-                        ))
+                    component_display_name = xblock_type_display_name(category, default_display_name=category)
+                    advanced_component_templates['templates'].append(
+                        create_template_dict(
+                            component_display_name,
+                            category,
+                            advanced_component_types[category]
+                        )
+                    )
+                    categories.add(category)
                 except PluginMissingError:
-                    # dhm: I got this once but it can happen any time the course author configures
-                    # an advanced component which does not exist on the server. This code here merely
-                    # prevents any authors from trying to instantiate the non-existent component type
-                    # by not showing it in the menu
-                    pass
+                    # dhm: I got this once but it can happen any time the
+                    # course author configures an advanced component which does
+                    # not exist on the server. This code here merely
+                    # prevents any authors from trying to instantiate the
+                    # non-existent component type by not showing it in the menu
+                    log.warning(
+                        "Advanced component %s does not exist. It will not be added to the Studio new component menu.",
+                        category
+                    )
     else:
-        log.error("Improper format for course advanced keys! {0}".format(course_advanced_keys))
+        log.error(
+            "Improper format for course advanced keys! %s",
+            course_advanced_keys
+        )
+    if len(advanced_component_templates['templates']) > 0:
+        component_templates.insert(0, advanced_component_templates)
 
-    components = [
-        component.location.url()
-        for component
-        in item.get_children()
-    ]
-
-    # TODO (cpennington): If we share units between courses,
-    # this will need to change to check permissions correctly so as
-    # to pick the correct parent subsection
-
-    containing_subsection_locs = modulestore().get_parent_locations(location, None)
-    containing_subsection = modulestore().get_item(containing_subsection_locs[0])
-
-    containing_section_locs = modulestore().get_parent_locations(containing_subsection.location, None)
-    containing_section = modulestore().get_item(containing_section_locs[0])
-
-    # cdodge hack. We're having trouble previewing drafts via jump_to redirect
-    # so let's generate the link url here
-
-    # need to figure out where this item is in the list of children as the preview will need this
-    index = 1
-    for child in containing_subsection.get_children():
-        if child.location == item.location:
-            break
-        index = index + 1
-
-    preview_lms_base = settings.MITX_FEATURES.get('PREVIEW_LMS_BASE')
-
-    preview_lms_link = '//{preview_lms_base}/courses/{org}/{course}/{course_name}/courseware/{section}/{subsection}/{index}'.format(
-        preview_lms_base=preview_lms_base,
-        lms_base=settings.LMS_BASE,
-        org=course.location.org,
-        course=course.location.course,
-        course_name=course.location.name,
-        section=containing_section.location.name,
-        subsection=containing_subsection.location.name,
-        index=index)
-
-    unit_state = compute_unit_state(item)
-
-    return render_to_response('unit.html', {
-        'context_course': course,
-        'unit': item,
-        'unit_location': location,
-        'components': components,
-        'component_templates': component_templates,
-        'draft_preview_link': preview_lms_link,
-        'published_preview_link': lms_link,
-        'subsection': containing_subsection,
-        'release_date': get_default_time_display(containing_subsection.lms.start) if containing_subsection.lms.start is not None else None,
-        'section': containing_section,
-        'new_unit_category': 'vertical',
-        'unit_state': unit_state,
-        'published_date': get_default_time_display(item.cms.published_date) if item.cms.published_date is not None else None
-    })
+    return component_templates
 
 
-@expect_json
-@login_required
-@require_http_methods(("GET", "POST", "PUT"))
-@ensure_csrf_cookie
-def assignment_type_update(request, org, course, category, name):
-    '''
-    CRUD operations on assignment types for sections and subsections and anything else gradable.
-    '''
-    location = Location(['i4x', org, course, category, name])
-    if not has_access(request.user, location):
-        return HttpResponseForbidden()
-
-    if request.method == 'GET':
-        return JsonResponse(CourseGradingModel.get_section_grader_type(location))
-    elif request.method in ('POST', 'PUT'):  # post or put, doesn't matter.
-        return JsonResponse(CourseGradingModel.update_section_grader_type(location, request.POST))
+def _filter_disabled_blocks(all_blocks):
+    """
+    Filter out disabled xblocks from the provided list of xblock names.
+    """
+    disabled_block_names = [block.name for block in disabled_xblocks()]
+    return [block_name for block_name in all_blocks if block_name not in disabled_block_names]
 
 
 @login_required
-@expect_json
-def create_draft(request):
-    location = request.POST['id']
+def _get_item_in_course(request, usage_key):
+    """
+    Helper method for getting the old location, containing course,
+    item, lms_link, and preview_lms_link for a given locator.
 
-    # check permissions for this user within this course
-    if not has_access(request.user, location):
+    Verifies that the caller has permission to access this item.
+    """
+    # usage_key's course_key may have an empty run property
+    usage_key = usage_key.replace(course_key=modulestore().fill_in_run(usage_key.course_key))
+
+    course_key = usage_key.course_key
+
+    if not has_course_author_access(request.user, course_key):
         raise PermissionDenied()
 
-    # This clones the existing item location to a draft location (the draft is implicit,
-    # because modulestore is a Draft modulestore)
-    modulestore().convert_to_draft(location)
+    course = modulestore().get_course(course_key)
+    item = modulestore().get_item(usage_key, depth=1)
+    lms_link = get_lms_link_for_item(item.location)
+    preview_lms_link = get_lms_link_for_item(item.location, preview=True)
 
-    return HttpResponse()
+    return course, item, lms_link, preview_lms_link
 
 
 @login_required
-@expect_json
-def publish_draft(request):
-    location = request.POST['id']
+def component_handler(request, usage_key_string, handler, suffix=''):
+    """
+    Dispatch an AJAX action to an xblock
 
-    # check permissions for this user within this course
-    if not has_access(request.user, location):
-        raise PermissionDenied()
+    Args:
+        usage_id: The usage-id of the block to dispatch to
+        handler (str): The handler to execute
+        suffix (str): The remainder of the url to be passed to the handler
 
-    item = modulestore().get_item(location)
-    _xmodule_recurse(item, lambda i: modulestore().publish(i.location, request.user.id))
+    Returns:
+        :class:`django.http.HttpResponse`: The response from the handler, converted to a
+            django response
+    """
 
-    return HttpResponse()
+    usage_key = UsageKey.from_string(usage_key_string)
+    # Let the module handle the AJAX
+    req = django_to_webob_request(request)
 
+    asides = []
 
-@login_required
-@expect_json
-def unpublish_unit(request):
-    location = request.POST['id']
+    try:
+        if isinstance(usage_key, (AsideUsageKeyV1, AsideUsageKeyV2)):
+            descriptor = modulestore().get_item(usage_key.usage_key)
+            aside_instance = get_xblock_aside_instance(usage_key)
+            asides = [aside_instance] if aside_instance else []
+            resp = aside_instance.handle(handler, req, suffix)
+        else:
+            descriptor = modulestore().get_item(usage_key)
+            descriptor.xmodule_runtime = StudioEditModuleRuntime(request.user)
+            resp = descriptor.handle(handler, req, suffix)
+    except NoSuchHandlerError:
+        log.info("XBlock %s attempted to access missing handler %r", descriptor, handler, exc_info=True)
+        raise Http404
 
-    # check permissions for this user within this course
-    if not has_access(request.user, location):
-        raise PermissionDenied()
+    # unintentional update to handle any side effects of handle call
+    # could potentially be updating actual course data or simply caching its values
+    modulestore().update_item(descriptor, request.user.id, asides=asides)
 
-    item = modulestore().get_item(location)
-    _xmodule_recurse(item, lambda i: modulestore().unpublish(i.location))
-
-    return HttpResponse()
-
-
-@expect_json
-@require_http_methods(("GET", "POST", "PUT"))
-@login_required
-@ensure_csrf_cookie
-def module_info(request, module_location):
-    location = Location(module_location)
-
-    # check that logged in user has permissions to this item
-    if not has_access(request.user, location):
-        raise PermissionDenied()
-
-    rewrite_static_links = request.GET.get('rewrite_url_links', 'True') in ['True', 'true']
-    logging.debug('rewrite_static_links = {0} {1}'.format(request.GET.get('rewrite_url_links', 'False'), rewrite_static_links))
-
-    # check that logged in user has permissions to this item
-    if not has_access(request.user, location):
-        raise PermissionDenied()
-
-    if request.method == 'GET':
-        return JsonResponse(get_module_info(get_modulestore(location), location, rewrite_static_links=rewrite_static_links))
-    elif request.method in ("POST", "PUT"):
-        return JsonResponse(set_module_info(get_modulestore(location), location, request.POST))
+    return webob_to_django_response(resp)

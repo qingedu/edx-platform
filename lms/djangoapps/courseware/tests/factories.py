@@ -1,86 +1,164 @@
-from datetime import datetime
+# Factories are self documenting
+# pylint: disable=missing-docstring
 import json
 from functools import partial
 
-from factory import DjangoModelFactory, SubFactory
-from student.tests.factories import UserFactory as StudentUserFactory
-from student.tests.factories import GroupFactory as StudentGroupFactory
+import factory
+from factory.django import DjangoModelFactory
+from opaque_keys.edx.keys import CourseKey
+from opaque_keys.edx.locator import CourseLocator
+
+from courseware.models import (
+    StudentModule,
+    XModuleStudentInfoField,
+    XModuleStudentPrefsField,
+    XModuleUserStateSummaryField
+)
+from student.roles import (
+    CourseBetaTesterRole,
+    CourseInstructorRole,
+    CourseStaffRole,
+    GlobalStaff,
+    OrgInstructorRole,
+    OrgStaffRole
+)
 from student.tests.factories import UserProfileFactory as StudentUserProfileFactory
-from student.tests.factories import CourseEnrollmentAllowedFactory as StudentCourseEnrollmentAllowedFactory
-from student.tests.factories import RegistrationFactory as StudentRegistrationFactory
-from courseware.models import StudentModule, XModuleContentField, XModuleSettingsField
-from courseware.models import XModuleStudentInfoField, XModuleStudentPrefsField
+# Imported to re-export
+from student.tests.factories import UserFactory  # Imported to re-export
 
-from xmodule.modulestore import Location
-from pytz import UTC
-
-location = partial(Location, 'i4x', 'edX', 'test_course', 'problem')
+# TODO fix this (course_id and location are invalid names as constants, and course_id should really be COURSE_KEY)
+# pylint: disable=invalid-name
+course_id = CourseKey.from_string('edX/test_course/test')
+location = partial(course_id.make_usage_key, u'problem')
 
 
 class UserProfileFactory(StudentUserProfileFactory):
-    name = 'Robot Studio'
     courseware = 'course.xml'
 
 
-class RegistrationFactory(StudentRegistrationFactory):
-    pass
+# For the following factories, these are disabled because we're ok ignoring the
+# unused arguments create and **kwargs in the line:
+# course_key(self, create, extracted, **kwargs)
+# pylint: disable=unused-argument
+
+class InstructorFactory(UserFactory):
+    """
+    Given a course Location, returns a User object with instructor
+    permissions for `course`.
+    """
+    last_name = "Instructor"
+
+    @factory.post_generation
+    def course_key(self, create, extracted, **kwargs):
+        if extracted is None:
+            raise ValueError("Must specify a CourseKey for a course instructor user")
+        CourseInstructorRole(extracted).add_users(self)
 
 
-class UserFactory(StudentUserFactory):
-    email = 'robot@edx.org'
-    last_name = 'Tester'
-    last_login = datetime.now(UTC)
-    date_joined = datetime.now(UTC)
+class StaffFactory(UserFactory):
+    """
+    Given a course Location, returns a User object with staff
+    permissions for `course`.
+    """
+    last_name = "Staff"
+
+    @factory.post_generation
+    def course_key(self, create, extracted, **kwargs):
+        if extracted is None:
+            raise ValueError("Must specify a CourseKey for a course staff user")
+        CourseStaffRole(extracted).add_users(self)
 
 
-class GroupFactory(StudentGroupFactory):
-    name = 'test_group'
+class BetaTesterFactory(UserFactory):
+    """
+    Given a course Location, returns a User object with beta-tester
+    permissions for `course`.
+    """
+    last_name = "Beta-Tester"
+
+    @factory.post_generation
+    def course_key(self, create, extracted, **kwargs):
+        if extracted is None:
+            raise ValueError("Must specify a CourseKey for a beta-tester user")
+        CourseBetaTesterRole(extracted).add_users(self)
 
 
-class CourseEnrollmentAllowedFactory(StudentCourseEnrollmentAllowedFactory):
-    pass
+class OrgStaffFactory(UserFactory):
+    """
+    Given a course Location, returns a User object with org-staff
+    permissions for `course`.
+    """
+    last_name = "Org-Staff"
+
+    @factory.post_generation
+    def course_key(self, create, extracted, **kwargs):
+        if extracted is None:
+            raise ValueError("Must specify a CourseKey for an org-staff user")
+        OrgStaffRole(extracted.org).add_users(self)
+
+
+class OrgInstructorFactory(UserFactory):
+    """
+    Given a course Location, returns a User object with org-instructor
+    permissions for `course`.
+    """
+    last_name = "Org-Instructor"
+
+    @factory.post_generation
+    def course_key(self, create, extracted, **kwargs):
+        if extracted is None:
+            raise ValueError("Must specify a CourseKey for an org-instructor user")
+        OrgInstructorRole(extracted.org).add_users(self)
+
+
+class GlobalStaffFactory(UserFactory):
+    """
+    Returns a User object with global staff access
+    """
+    last_name = "GlobalStaff"
+
+    @factory.post_generation
+    def set_staff(self, create, extracted, **kwargs):
+        GlobalStaff().add_users(self)
+# pylint: enable=unused-argument
 
 
 class StudentModuleFactory(DjangoModelFactory):
-    FACTORY_FOR = StudentModule
+    class Meta(object):
+        model = StudentModule
 
     module_type = "problem"
-    student = SubFactory(UserFactory)
-    course_id = "MITx/999/Robot_Super_Course"
+    student = factory.SubFactory(UserFactory)
+    course_id = CourseLocator("MITx", "999", "Robot_Super_Course")
     state = None
     grade = None
     max_grade = None
     done = 'na'
 
 
-class ContentFactory(DjangoModelFactory):
-    FACTORY_FOR = XModuleContentField
+class UserStateSummaryFactory(DjangoModelFactory):
+    class Meta(object):
+        model = XModuleUserStateSummaryField
 
     field_name = 'existing_field'
     value = json.dumps('old_value')
-    definition_id = location('def_id').url()
-
-
-class SettingsFactory(DjangoModelFactory):
-    FACTORY_FOR = XModuleSettingsField
-
-    field_name = 'existing_field'
-    value = json.dumps('old_value')
-    usage_id = '%s-%s' % ('edX/test_course/test', location('def_id').url())
+    usage_id = location('usage_id')
 
 
 class StudentPrefsFactory(DjangoModelFactory):
-    FACTORY_FOR = XModuleStudentPrefsField
+    class Meta(object):
+        model = XModuleStudentPrefsField
 
     field_name = 'existing_field'
     value = json.dumps('old_value')
-    student = SubFactory(UserFactory)
-    module_type = 'MockProblemModule'
+    student = factory.SubFactory(UserFactory)
+    module_type = 'mock_problem'
 
 
 class StudentInfoFactory(DjangoModelFactory):
-    FACTORY_FOR = XModuleStudentInfoField
+    class Meta(object):
+        model = XModuleStudentInfoField
 
     field_name = 'existing_field'
     value = json.dumps('old_value')
-    student = SubFactory(UserFactory)
+    student = factory.SubFactory(UserFactory)

@@ -6,7 +6,7 @@ Toolbar. I it suitable to run against acceptance tests.
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
 
 from .dev import *
 
@@ -15,12 +15,11 @@ from .dev import *
 INSTALLED_APPS = tuple(e for e in INSTALLED_APPS if e != 'debug_toolbar')
 INSTALLED_APPS = tuple(e for e in INSTALLED_APPS if e != 'debug_toolbar_mongo')
 
-MIDDLEWARE_CLASSES = tuple(e for e in MIDDLEWARE_CLASSES \
-                           if e != 'debug_toolbar.middleware.DebugToolbarMiddleware')
+MIDDLEWARE_CLASSES = [e for e in MIDDLEWARE_CLASSES if e != 'debug_toolbar.middleware.DebugToolbarMiddleware']
 
 
 ########################### LETTUCE TESTING ##########################
-MITX_FEATURES['DISPLAY_TOY_COURSES'] = True
+FEATURES['DISPLAY_TOY_COURSES'] = True
 
 INSTALLED_APPS += ('lettuce.django',)
 # INSTALLED_APPS += ('portal',)

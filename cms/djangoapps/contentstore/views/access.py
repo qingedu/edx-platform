@@ -1,37 +1,22 @@
-from auth.authz import STAFF_ROLE_NAME, INSTRUCTOR_ROLE_NAME
-from auth.authz import is_user_in_course_group_role
-from django.core.exceptions import PermissionDenied
-from ..utils import get_course_location_for_item
-from xmodule.modulestore import Location
+""" Helper methods for determining user access permissions in Studio """
+
+from student import auth
+from student.roles import CourseInstructorRole
 
 
-def get_location_and_verify_access(request, org, course, name):
+def get_user_role(user, course_id):
     """
-    Create the location, verify that the user has permissions
-    to view the location. Returns the location as a Location
+    What type of access: staff or instructor does this user have in Studio?
+
+    No code should use this for access control, only to quickly serialize the type of access
+    where this code knows that Instructor trumps Staff and assumes the user has one or the other.
+
+    This will not return student role because its purpose for using in Studio.
+
+    :param course_id: the course_id of the course we're interested in
     """
-    location = ['i4x', org, course, 'course', name]
-
-    # check that logged in user has permissions to this item
-    if not has_access(request.user, location):
-        raise PermissionDenied()
-
-    return Location(location)
-
-
-def has_access(user, location, role=STAFF_ROLE_NAME):
-    '''
-    Return True if user allowed to access this piece of data
-    Note that the CMS permissions model is with respect to courses
-    There is a super-admin permissions if user.is_staff is set
-    Also, since we're unifying the user database between LMS and CAS,
-    I'm presuming that the course instructor (formally known as admin)
-    will not be in both INSTRUCTOR and STAFF groups, so we have to cascade our queries here as INSTRUCTOR
-    has all the rights that STAFF do
-    '''
-    course_location = get_course_location_for_item(location)
-    _has_access = is_user_in_course_group_role(user, course_location, role)
-    # if we're not in STAFF, perhaps we're in INSTRUCTOR groups
-    if not _has_access and role == STAFF_ROLE_NAME:
-        _has_access = is_user_in_course_group_role(user, course_location, INSTRUCTOR_ROLE_NAME)
-    return _has_access
+    # afaik, this is only used in lti
+    if auth.user_has_role(user, CourseInstructorRole(course_id)):
+        return 'instructor'
+    else:
+        return 'staff'

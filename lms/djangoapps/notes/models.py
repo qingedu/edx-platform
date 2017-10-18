@@ -1,14 +1,17 @@
-from django.db import models
-from django.contrib.auth.models import User
-from django.core.urlresolvers import reverse
-from django.core.exceptions import ValidationError
-from django.utils.html import strip_tags
 import json
+
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.core.urlresolvers import reverse
+from django.db import models
+from django.utils.html import strip_tags
+
+from openedx.core.djangoapps.xmodule_django.models import CourseKeyField
 
 
 class Note(models.Model):
     user = models.ForeignKey(User, db_index=True)
-    course_id = models.CharField(max_length=255, db_index=True)
+    course_id = CourseKeyField(max_length=255, db_index=True)
     uri = models.CharField(max_length=255, db_index=True)
     text = models.TextField(default="")
     quote = models.TextField(default="")
@@ -20,6 +23,9 @@ class Note(models.Model):
     created = models.DateTimeField(auto_now_add=True, null=True, db_index=True)
     updated = models.DateTimeField(auto_now=True, db_index=True)
 
+    class Meta:
+        app_label = 'notes'
+
     def clean(self, json_body):
         """
         Cleans the note object or raises a ValidationError.
@@ -28,7 +34,7 @@ class Note(models.Model):
             raise ValidationError('Note must have a body.')
 
         body = json.loads(json_body)
-        if not type(body) is dict:
+        if not isinstance(body, dict):
             raise ValidationError('Note body must be a dictionary.')
 
         # NOTE: all three of these fields should be considered user input
@@ -56,7 +62,8 @@ class Note(models.Model):
         """
         Returns the absolute url for the note object.
         """
-        kwargs = {'course_id': self.course_id, 'note_id': str(self.pk)}
+        # pylint: disable=no-member
+        kwargs = {'course_id': self.course_id.to_deprecated_string(), 'note_id': str(self.pk)}
         return reverse('notes_api_note', kwargs=kwargs)
 
     def as_dict(self):

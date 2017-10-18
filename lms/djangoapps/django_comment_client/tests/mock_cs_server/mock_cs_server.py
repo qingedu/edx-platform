@@ -1,6 +1,7 @@
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 import json
+from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from logging import getLogger
+
 logger = getLogger(__name__)
 
 
@@ -23,14 +24,17 @@ class MockCommentServiceRequestHandler(BaseHTTPRequestHandler):
         post_dict = json.loads(data_string)
 
         # Log the request
-        logger.debug("Comment Service received POST request %s to path %s" %
-                    (json.dumps(post_dict), self.path))
+        # pylint: disable=logging-format-interpolation
+        logger.debug(
+            "Comment Service received POST request {0} to path {1}"
+            .format(json.dumps(post_dict), self.path)
+        )
 
         # Every good post has at least an API key
-        if 'api_key' in post_dict:
+        if 'X-Edx-Api-Key' in self.headers:
             response = self.server._response_str
             # Log the response
-            logger.debug("Comment Service: sending response %s" % json.dumps(response))
+            logger.debug("Comment Service: sending response %s", json.dumps(response))
 
             # Send a response back to the client
             self.send_response(200)
@@ -58,14 +62,17 @@ class MockCommentServiceRequestHandler(BaseHTTPRequestHandler):
         post_dict = json.loads(data_string)
 
         # Log the request
-        logger.debug("Comment Service received PUT request %s to path %s" %
-                    (json.dumps(post_dict), self.path))
+        # pylint: disable=logging-format-interpolation
+        logger.debug(
+            "Comment Service received PUT request {0} to path {1}"
+            .format(json.dumps(post_dict), self.path)
+        )
 
         # Every good post has at least an API key
-        if 'api_key' in post_dict:
+        if 'X-Edx-Api-Key' in self.headers:
             response = self.server._response_str
             # Log the response
-            logger.debug("Comment Service: sending response %s" % json.dumps(response))
+            logger.debug("Comment Service: sending response %s", json.dumps(response))
 
             # Send a response back to the client
             self.send_response(200)

@@ -1,709 +1,781 @@
 // studio - views - course outline
 // ====================
 
-body.course.outline {
+// view-specific utilities
+// --------------------
+%outline-item-header {
+  @include clearfix();
 
-  input.courseware-unit-search-input {
-      float: left;
-      width: 260px;
-      background-color: #fff;
-  }
+  line-height: 0;
 
-  .branch {
+  // CASE: is-editable
+  // TODO: abstract out
+  .is-editable {
+    .incontext-editor-value, .incontext-editor-action-wrapper {
+      vertical-align: top;
+    }
 
-      .section-item {
-        @include clearfix();
+    .incontext-editor-action-wrapper {
+      position: relative;
+    }
 
-        .details {
-          display: block;
-          float: left;
-          margin-bottom: 0;
-          width: 650px;
-        }
+    .incontext-editor-open-action {
+      @include transition(opacity $tmg-f1 ease-in-out 0);
 
-        .gradable-status {
-          float: right;
-          position: relative;
-          top: -4px;
-          right: 50px;
-          width: 100px;
+      opacity: 0;
+    }
 
-          .status-label {
-            @include font-size(12);
-            position: absolute;
-            top: 2px;
-            right: -5px;
-            display: none;
-            width: 110px;
-            padding: 5px 40px 5px 10px;
-            border-radius: 3px;
-            color: $lightGrey;
-            text-align: right;
-            font-weight: bold;
-            line-height: 16px;
-          }
+    .incontext-editor-form {
+      width: 100%;
+      position: relative;
+      top: -($baseline/4);
+    }
 
-          .menu-toggle {
-                z-index: 10;
-                position: absolute;
-                top: 0;
-                right: 5px;
-                padding: 5px;
-                color: $mediumGrey;
+    // TOOD: abstract this out into a Sass placeholder
+    .incontext-editor-input {
+      @include transition(box-shadow $tmg-f1 ease-in-out 0, color $tmg-f1 ease-in-out 0);
 
-                &:hover, &.is-active {
-                  color: $blue;
-                }
-              }
+      width: 100%;
+      background: none repeat scroll 0 0 $white;
+      border: 0;
+      box-shadow: 0 0 2px 2px $shadow inset;
 
-              [class^="icon-"] {
-                  vertical-align: middle;
-                  margin-top: -5px;
-                  display: inline-block;
-                }
-
-              .menu {
-                @include font-size(12);
-                @include transition(opacity $tmg-f2 linear 0s);
-                border-radius: 4px;
-                box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
-                z-index: 1;
-                display: none;
-                opacity: 0.0;
-                position: absolute;
-                top: -1px;
-                right: 0;
-                margin: 0;
-                padding: 8px 12px;
-                background: $white;
-                border: 1px solid $mediumGrey;
-
-
-                li {
-                  width: 115px;
-                  margin-bottom: 3px;
-                  padding-bottom: 3px;
-                  border-bottom: 1px solid $lightGrey;
-
-                  &:last-child {
-                    margin-bottom: 0;
-                    padding-bottom: 0;
-                    border: none;
-
-                    a {
-                      color: $darkGrey;
-                    }
-                  }
-                }
-
-            a {
-              color: $blue;
-
-              &.is-selected {
-                font-weight: bold;
-              }
-            }
-          }
-
-          // dropdown state
-          &.is-active {
-
-            .menu {
-              z-index: 1000;
-              display: block;
-              opacity: 1.0;
-            }
-
-            .menu-toggle {
-              z-index: 10000;
-            }
-          }
-
-          // set state
-          &.is-set {
-
-            .menu-toggle {
-              color: $blue;
-            }
-
-            .status-label {
-              display: block;
-              color: $blue;
-            }
-          }
-        }
+      // STATE: focus
+      &:focus {
+        box-shadow: 0 0 2px 2px rgba($ui-action-primary-color-focus, 0.5) inset;
+        color: $ui-action-primary-color-focus;
       }
     }
 
-
-  .courseware-section {
-      position: relative;
-      background: #fff;
-      border-radius: 3px;
-      border: 1px solid $mediumGrey;
-      margin-top: 15px;
-      padding-bottom: 12px;
-      box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
-
-      &:first-child {
-          margin-top: 0;
+    // STATE: hover/focus
+    &:hover, &:focus {
+      .incontext-editor-open-action {
+        opacity: 1;
       }
-
-      &.collapsed {
-          padding-bottom: 0;
-      }
-
-      label {
-          float: left;
-          line-height: 29px;
-      }
-
-      .datepair {
-          float: left;
-          margin-left: 10px;
-      }
-
-      .section-published-date {
-          position: absolute;
-          top: 19px;
-          right: 80px;
-          padding: 4px 10px;
-          border-radius: 3px;
-          background: $lightGrey;
-          text-align: right;
-
-          .published-status {
-              @include font-size(12);
-              margin-right: 15px;
-
-              strong {
-                  font-weight: bold;
-              }
-          }
-
-          .schedule-button {
-              @include blue-button;
-          }
-
-          .edit-button {
-              @include blue-button;
-          }
-
-          .schedule-button,
-          .edit-button {
-              @include font-size(11);
-              padding: 3px 15px 5px;
-          }
-      }
-
-      .datepair .date,
-      .datepair .time {
-          @include font-size(13);
-          box-shadow: none;
-          padding-left: 0;
-          padding-right: 0;
-          border: none;
-          background: none;
-          font-weight: bold;
-          color: $blue;
-          cursor: pointer;
-      }
-
-      .datepair .date {
-          width: 80px;
-      }
-
-      .datepair .time {
-          width: 65px;
-      }
-
-      &.collapsed .subsection-list,
-      .collapsed .subsection-list,
-      .collapsed > ol {
-          display: none !important;
-      }
-
-      header {
-          min-height: 75px;
-          @include clearfix();
-
-          .item-details, .section-published-date {
-
-          }
-
-          .item-details {
-              display: inline-block;
-              padding: 20px 0 10px 0;
-              @include clearfix();
-
-              .section-name {
-                @include font-size(19);
-                float: left;
-                margin-right: 10px;
-                width: 350px;
-                font-weight: bold;
-                color: $blue;
-              }
-
-              .section-name-span {
-                @include transition(color $tmg-f2 linear 0s);
-                cursor: pointer;
-
-                &:hover {
-                  color: $orange;
-                }
-              }
-
-              .section-name-edit {
-                position: relative;
-                width: 400px;
-                background: $white;
-
-                input {
-                @include font-size(16);
-            }
-
-            .save-button {
-              @include blue-button;
-              padding: 7px 20px 7px;
-              margin-right: 5px;
-            }
-
-            .cancel-button {
-              @include white-button;
-              padding: 7px 20px 7px;
-            }
-          }
-
-          .section-published-date {
-            float: right;
-            border-radius: 3px;
-            background: $lightGrey;
-
-            .published-status {
-              @include font-size(12);
-              margin-right: 15px;
-
-              strong {
-                font-weight: bold;
-              }
-            }
-
-            .schedule-button {
-              @include blue-button;
-            }
-
-            .edit-button {
-              @include blue-button;
-            }
-
-            .schedule-button,
-            .edit-button {
-              @include font-size(11);
-              padding: 0 15px 2px 15px;
-              }
-            }
-
-            .gradable-status {
-              position: absolute;
-              top: 20px;
-              right: 70px;
-              width: 145px;
-
-              .status-label {
-                @include font-size(12);
-                border-radius: 3px;
-                position: absolute;
-                top: 0;
-                right: 2px;
-                display: none;
-                width: 100px;
-                padding: 10px 35px 10px 10px;
-                background: $lightGrey;
-                color: $lightGrey;
-                text-align: right;
-                font-weight: bold;
-                line-height: 16px;
-              }
-
-              .menu-toggle {
-                z-index: 10;
-                position: absolute;
-                top: 2px;
-                right: 5px;
-                padding: 5px;
-                color: $lightGrey;
-
-                &:hover, &.is-active {
-                  color: $blue;
-                }
-
-              }
-
-              .menu {
-                @include font-size(12);
-                @include transition(opacity $tmg-f2 linear 0s, display $tmg-f2 linear 0s);
-                border-radius: 4px;
-                box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
-                z-index: 1;
-                display: none;
-                opacity: 0.0;
-                position: absolute;
-                top: -1px;
-                left: 2px;
-                margin: 0;
-                padding: 8px 12px;
-                background: $white;
-                border: 1px solid $mediumGrey;
-
-
-
-                li {
-                  width: 115px;
-                  margin-bottom: 3px;
-                  padding-bottom: 3px;
-                  border-bottom: 1px solid $lightGrey;
-
-                  &:last-child {
-                    margin-bottom: 0;
-                    padding-bottom: 0;
-                    border: none;
-
-                    a {
-                      color: $darkGrey;
-                    }
-                  }
-                }
-
-                a {
-
-                  &.is-selected {
-                    font-weight: bold;
-                  }
-                }
-            }
-
-            // dropdown state
-            &.is-active {
-
-              .menu {
-                z-index: 1000;
-                display: block;
-                opacity: 1.0;
-              }
-
-
-            .menu-toggle {
-              z-index: 10000;
-            }
-          }
-
-          // set state
-          &.is-set {
-
-            .menu-toggle {
-              color: $blue;
-            }
-
-            .status-label {
-              display: block;
-              color: $blue;
-            }
-          }
-
-          float: left;
-          padding: 21px 0 0;
-        }
-      }
-
-          .item-actions {
-              margin-top: 21px;
-              margin-right: 12px;
-
-              .edit-button,
-              .delete-button {
-                  margin-top: -3px;
-              }
-          }
-
-          .expand-collapse-icon {
-              @include transition(none);
-              float: left;
-              margin: 25px 6px 16px 16px;
-
-              &.expand {
-                  background-position: 0 0;
-              }
-
-              &.collapsed {
-
-              }
-          }
-
-          .drag-handle {
-              margin-left: 11px;
-          }
-      }
-
-      h3 {
-          @include font-size(19);
-          font-weight: 700;
-          color: $blue;
-      }
-
-      .section-name-span {
-          @include transition(color $tmg-f2 linear 0s);
-          cursor: pointer;
-
-          &:hover {
-              color: $orange;
-          }
-      }
-
-      .section-name-form {
-          margin-bottom: 15px;
-      }
-
-      .section-name-edit {
-          input {
-            @include font-size(16);
-          }
-
-          .save-button {
-              @include blue-button;
-              padding: 7px 20px 7px;
-              margin-right: 5px;
-          }
-
-          .cancel-button {
-              @include white-button;
-              padding: 7px 20px 7px;
-          }
-      }
-
-      h4 {
-          @include font-size(12);
-          color: #878e9d;
-
-          strong {
-              font-weight: bold;
-          }
-      }
-
-      .list-header {
-          @include linear-gradient(top, transparent, rgba(0, 0, 0, .1));
-          background-color: #ced2db;
-          border-radius: 3px 3px 0 0;
-      }
-
-      .subsection-list {
-          margin: 0 12px;
-
-          > ol {
-              @include tree-view;
-              border-top-width: 0;
-          }
-      }
-
-      &.new-section {
-
-          header {
-              @include clearfix();
-              height: auto;
-          }
-
-          .expand-collapse-icon {
-              visibility: hidden;
-          }
-
-          .item-details {
-            padding: 25px 0 0 0;
-
-            .section-name {
-              float: none;
-              width: 100%;
-            }
-          }
-      }
+    }
+  }
+}
+
+%outline-item-content-hidden {
+  display: none;
+}
+
+%outline-item-content-shown {
+  display: block;
+}
+
+.view-outline {
+
+  // page structure
+  // --------------------
+  .content-primary,
+  .content-supplementary {
+    @include box-sizing(border-box);
   }
 
-  .toggle-button-sections {
-      @include font-size(12);
-      display: none;
-      position: relative;
-      float: right;
-      margin-top: ($baseline/4);
-      color: $darkGrey;
+  .content-primary {
+    @extend .ui-col-wide;
 
-      &.is-shown {
-          display: block;
-      }
-
-      [class^="icon-"] {
-          @include font-size(11);
-          border-radius: 20px;
-          position: relative;
-          top: -1px;
-          display: inline-block;
-          margin-right: 2px;
-          line-height: 5px;
-      }
-
-      .label {
-          display: inline-block;
-      }
+    .no-content {
+      @extend %no-content;
+    }
   }
 
+  .content-supplementary {
+    @extend .ui-col-narrow;
+  }
+
+
+  // page header
+  // --------------------
+  .button-toggle-expand-collapse {
+
+    // STATE: action will collapse all
+    &.collapse-all {
+      .expand-all {
+        display: none;
+      }
+
+      .collapse-all {
+        display: block;
+      }
+    }
+
+    // STATE: action will expand all
+    &.expand-all {
+      .collapse-all {
+        display: none;
+      }
+
+      .expand-all {
+        display: block;
+      }
+    }
+  }
+
+  // adding outline elements
+  // --------------------
+
+  // forms
   .new-section-name,
   .new-subsection-name-input {
-      width: 515px;
+    @extend %t-copy-base;
+
+    display: inline-block;
+    width: 515px;
+    padding: ($baseline/4);
+    vertical-align: top;
+  }
+
+  .new-subsection-name-input {
+    @extend %t-copy-sub1;
   }
 
   .new-section-name-save,
   .new-subsection-name-save {
-      @include blue-button;
-      padding: 4px 20px 7px;
-      margin: 0 5px;
-      color: #fff !important;
+    @include blue-button();
+
+    margin: 0 5px;
+    padding: 4px 20px 7px;
+    color: $white;
   }
 
   .new-section-name-cancel,
   .new-subsection-name-cancel {
-      @include white-button;
-      padding: 4px 20px 7px;
-      color: #8891a1 !important;
+    @include white-button();
+
+    padding: 4px 20px 7px;
+    color: $gray-l1;
   }
 
-  .dummy-calendar {
-      display: none;
-      position: absolute;
-      top: 55px;
-      left: 110px;
-      z-index: 9999;
-      border: 1px solid #3C3C3C;
-      box-shadow: 0 1px 15px rgba(0, 0, 0, .2);
+  // buttons
+  .new-subsection-item,
+  .new-unit-item {
+    @extend %ui-btn-flat-outline;
+
+    width: 100%;
+    margin: 0 0 ($baseline/2) 0;
+    border: 1px solid $gray-l3;
+    padding: ($baseline/2) 0;
+    color: $gray-l2;
+
+
+    &:hover {
+      box-shadow: none;
+      background-image: none;
+    }
   }
 
-  .preview {
-      background: url(../img/preview.jpg) center top no-repeat;
+  .courseware-unit-new {
+    margin-right: ($baseline*1.5);
   }
 
-  .edit-subsection-publish-settings {
-      display: none;
-      position: fixed;
-      top: 100px;
-      left: 50%;
-      z-index: 99999;
-      width: 600px;
-      margin-left: -300px;
-      background: #fff;
-      text-align: center;
 
-      .settings {
-          padding: 40px;
-      }
-
-      h3 {
-          @include font-size(34);
-          font-weight: 300;
-      }
-
-      .picker {
-          @include clearfix();
-          margin: 30px 0 65px;
-
-          .field {
-            float: left;
-            margin-right: ($baseline/2);
-
-            &:first-child {
-              margin-left: ($baseline*5);
-            }
-
-            &:last-child {
-              margin-right: 0;
-            }
-
-            label, input {
-              display: block;
-              text-align: left;
-            }
-
-            label {
-              @extend .t-copy-sub1;
-              margin-bottom: ($baseline/4);
-            }
-          }
-      }
-
-      .description {
-          @include font-size(14);
-          float: left;
-          margin-top: 30px;
-          line-height: 20px;
-          width: 100%;
-      }
-
-      strong {
-          font-weight: 700;
-      }
-
-      .start-date,
-      .start-time {
-          @include font-size(19);
-      }
-
-      .save-button {
-          @include blue-button;
-          margin-right: 10px;
-      }
-
-      .cancel-button {
-          @include white-button;
-      }
-
-      .save-button,
-      .cancel-button {
-        @include font-size(16);
-      }
+  // UI: general action list styles (section and subsection)
+  // --------------------
+  .expand-collapse {
+    @extend %expand-collapse;
   }
 
-  .collapse-all-button {
-      @include font-size(13);
-      float: right;
-      margin-top: 10px;
-      color: $darkGrey;
-  }
+  // course status
+  // --------------------
+  .course-status {
+    margin-bottom: $baseline;
 
-  // sort/drag and drop
-  .ui-droppable {
-      @include transition (padding 0.5s ease-in-out 0s);
-      min-height: 20px;
-      padding: 0;
+    .status-release,
+    .status-pacing {
+      @extend %t-copy-base;
 
-      &.dropover {
-          padding: 15px 0;
-      }
-  }
+      display: inline-block;
+      color: $color-copy-base;
 
-  .ui-draggable-dragging {
-      box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
-      border: 1px solid $darkGrey;
-      opacity : 0.2;
+      // STATE: hover
       &:hover {
-          opacity : 1.0;
-          .section-item {
-              background: $yellow !important;
+        .status-actions {
+          opacity: 1;
+        }
+      }
+    }
+
+    .status-release-label,
+    .status-release-value,
+    .status-pacing-label,
+    .status-pacing-value,
+    .status-actions {
+      display: inline-block;
+      vertical-align: middle;
+      margin-bottom: 0;
+    }
+
+    .status-release-label,
+    .status-pacing-label {
+      margin-right: ($baseline/4);
+    }
+
+    .status-release-value,
+    .status-pacing-value {
+      @extend %t-strong;
+    }
+
+    .status-actions {
+      @extend %actions-list;
+
+      @include transition(opacity $tmg-f1 ease-in-out 0);
+
+      margin-left: ($baseline/4);
+      opacity: 0;
+    }
+  }
+
+  // outline
+  // --------------------
+
+  // UI: simple version of the outline
+  .outline-simple {
+
+  }
+
+  // UI: complex version of the outline
+  .outline-complex {
+    .outline-content {
+      margin-top: 0;
+    }
+
+    // outline: items
+    .outline-item {
+
+      // CASE: expand/collapse-able
+      &.is-collapsible {
+
+        // only select the current item's toggle expansion controls
+        &:nth-child(1) .ui-toggle-expansion, &:nth-child(1) .item-title {
+
+          // STATE: hover/active
+          &:hover, &:active {
+            color: $blue;
           }
+        }
+
+        &.is-dragging {
+          @include transition-property(none);
+        }
       }
 
-      // hiding unit button - temporary fix until this semantically corrected
-      .new-unit-item {
-        display: none;
+      // item: title
+      .item-title {
+
+        // STATE: is-editable
+        &.is-editable {
+
+          // editor
+          + .editor {
+            display: block;
+
+            .item-edit-title {
+              width: 100%;
+            }
+          }
+        }
       }
+
+      // STATE: drag and drop
+      .drop-target-prepend .draggable-drop-indicator-initial {
+        opacity: 1;
+      }
+
+      // STATE: was dropped
+      &.was-dropped {
+        border-color: $blue;
+      }
+    }
+
+    // outline: sections
+    // --------------------
+    .outline-section {
+      padding: ($baseline*0.75) $baseline ($baseline*0.75) ($baseline + 4);
+
+      // header
+      .section-header {
+        @extend %outline-item-header;
+
+        .incontext-editor-input {
+          @extend %t-strong;
+          @extend %t-title5;
+        }
+      }
+
+      .section-header-details {
+        @include float(left);
+
+        width: flex-grid(6, 9);
+
+        .icon, .wrapper-section-title {
+          display: inline-block;
+          vertical-align: top;
+        }
+
+        .icon {
+          @include margin-right($baseline/4);
+        }
+
+        .wrapper-section-title {
+          width: flex-grid(5, 6);
+          line-height: 0;
+        }
+
+        .action-edit.action-inline {
+          .icon {
+            @include margin-right(0);
+            @include transform(none);
+
+            vertical-align: middle;
+          }
+        }
+      }
+
+      .section-header-actions {
+        @include float(right);
+
+        width: flex-grid(3, 9);
+        margin-top: -($baseline/4);
+
+        @include text-align(right);
+
+        .actions-list {
+          @extend %actions-list;
+          @extend %t-action2;
+        }
+      }
+
+      // in-context actions
+      .incontext-editor-action-wrapper {
+        top: -($baseline/20);
+      }
+
+      // status
+      .section-status {
+        margin: 0 0 0 ($outline-indent-width*1.25);
+      }
+
+      // content
+      .section-content {
+        @extend %outline-item-content-shown;
+      }
+
+      // CASE: is-collapsible
+      &.is-collapsible {
+        @extend %ui-expand-collapse;
+
+        .ui-toggle-expansion {
+          @extend %t-icon3;
+
+          color: $gray-l3;
+        }
+      }
+
+      // STATE: is-collapsed
+      &.is-collapsed {
+        .section-content {
+          @extend %outline-item-content-hidden;
+        }
+      }
+
+      // STATE: drag and drop - was dropped
+      &.was-dropped {
+        border-left-color: $ui-action-primary-color-focus;
+      }
+    }
+
+    // outline: subsections
+    // --------------------
+    .list-subsections {
+      margin: $baseline 0 0 0;
+    }
+
+    .outline-subsection {
+      padding: ($baseline*0.75);
+
+      // header
+      .subsection-header {
+        @extend %outline-item-header;
+
+        .incontext-editor-input {
+          @extend %t-title6;
+        }
+      }
+
+      .subsection-header-details {
+        @include float(left);
+
+        width: flex-grid(6, 9);
+
+        .icon, .wrapper-subsection-title {
+          display: inline-block;
+          vertical-align: top;
+        }
+
+        .icon {
+          @include margin-right($baseline/4);
+        }
+
+        .wrapper-subsection-title {
+          width: flex-grid(5, 6);
+          margin-top: -($baseline/10);
+          line-height: 0;
+        }
+
+        .action-edit.action-inline {
+          .icon {
+            @include transform(none);
+
+            margin-right: 0;
+            vertical-align: middle;
+          }
+        }
+      }
+
+      .subsection-header-actions {
+        @include float(right);
+
+        width: flex-grid(3, 9);
+        margin-top: -($baseline/4);
+
+        @include text-align(right);
+
+        .actions-list {
+          @extend %actions-list;
+          @extend %t-action2;
+
+          margin-right: ($baseline/2);
+        }
+      }
+
+      // in-context actions
+      .incontext-editor-action-wrapper {
+        top: -($baseline/10);
+      }
+
+      // status
+      .subsection-status {
+        @include margin(0, 0, 0, $outline-indent-width);
+      }
+
+      // content
+      .subsection-content {
+        @extend %outline-item-content-shown;
+      }
+
+      // CASE: is-collapsible
+      &.is-collapsible {
+        @extend %ui-expand-collapse;
+
+        .ui-toggle-expansion {
+          @extend %t-icon4;
+
+          color: $gray-l3;
+        }
+      }
+
+      // STATE: is-collapsed
+      &.is-collapsed {
+        .subsection-content {
+          @extend %outline-item-content-hidden;
+        }
+      }
+    }
+
+    // outline: units
+    // --------------------
+    .list-units {
+      margin: $baseline 0 0 0;
+    }
+
+    .outline-unit {
+      @include transition(margin $tmg-f2 linear 0s); // needed for drag and drop transitions
+
+      margin-left: $outline-indent-width;
+
+      // header
+      .unit-header {
+        @extend %outline-item-header;
+      }
+
+      .unit-header-details {
+        @include float(left);
+
+        width: flex-grid(6, 9);
+        margin-top: ($baseline/4);
+      }
+
+      .unit-header-actions {
+        @include float(right);
+
+        width: flex-grid(3, 9);
+        margin-top: -($baseline/10);
+
+        @include text-align(right);
+
+        .actions-list {
+          @extend %actions-list;
+          @extend %t-action2;
+        }
+      }
+    }
+
+    // add/new items
+    .add-item {
+      margin-top: ($baseline*0.75);
+
+      .button-new {
+        @extend %ui-btn-flat-outline;
+
+        padding: ($baseline/2) $baseline;
+        display: block;
+
+        .icon {
+          display: inline-block;
+          vertical-align: middle;
+
+          @include margin-right($baseline/2);
+        }
+      }
+    }
+
+    .add-section {
+      margin-bottom: $baseline;
+    }
+
+    .add-subsection {
+
+    }
+
+    .add-unit {
+      margin-left: $outline-indent-width;
+    }
   }
 
-  ol.ui-droppable .branch:first-child .section-item {
-      border-top: none;
+
+  // UI: drag and drop: section
+  // --------------------
+  .outline-section {
+    .ui-splint-indicator {
+      height: ($baseline/10);
+      margin-left: ($baseline/4);
+    }
+
+    .draggable-drop-indicator-before {
+      top: -($baseline*0.75);
+      left: 0;
+    }
+
+    .draggable-drop-indicator-after {
+      bottom: -($baseline*0.75);
+      left: 0;
+    }
   }
+
+  // UI: drag and drop: subsection
+  .outline-subsection {
+    .ui-splint-indicator {
+      height: ($baseline/10);
+      margin-left: ($baseline*1.25);
+    }
+
+    .draggable-drop-indicator-before {
+      top: -($baseline*0.75);
+    }
+
+    .draggable-drop-indicator-after {
+      bottom: -($baseline*0.75);
+    }
+  }
+
+  // // UI: drag and drop: unit
+  .outline-unit {
+    .draggable-drop-indicator-before {
+      top: -($baseline*0.75);
+    }
+
+    .draggable-drop-indicator-after {
+      bottom: -($baseline*0.75);
+    }
+  }
+
+  // UI: drag and drop: splints
+  .ui-splint-indicator {
+    position: relative;
+
+    .draggable-drop-indicator {
+      @extend %ui-depth3;
+
+      @include transition(opacity $tmg-f2 linear 0s);
+      @include size(100%, auto);
+
+      position: absolute;
+      border-top: 1px solid $blue-l1;
+      opacity: 0;
+
+      .fa-caret-right {
+        @extend %t-icon5;
+
+        position: absolute;
+        top: -12px;
+        left: -($baseline/4);
+        color: $blue-s1;
+      }
+    }
+
+    .draggable-drop-indicator-before {
+      top: -($baseline/2);
+    }
+
+    .draggable-drop-indicator-after {
+      bottom: -($baseline/2);
+    }
+  }
+
+  // outline: edit item settings
+  .wrapper-modal-window-bulkpublish-section,
+  .wrapper-modal-window-bulkpublish-subsection,
+  .wrapper-modal-window-bulkpublish-unit,
+  .course-outline-modal {
+    .list-fields {
+      .field {
+        display: inline-block;
+        vertical-align: top;
+        margin-right: ($baseline/2);
+        margin-bottom: ($baseline/4);
+
+
+        // TODO: refactor the _forms.scss partial to allow for this area to inherit from it
+        label, input, textarea {
+          display: block;
+        }
+
+        label {
+          @extend %t-copy-sub1;
+
+          @include transition(color $tmg-f3 ease-in-out 0s);
+
+          margin: 0 0 ($baseline/4) 0;
+          font-weight: 600;
+
+          &.is-focused {
+            color: $blue;
+          }
+        }
+
+
+        input, textarea {
+          @extend %t-copy-base;
+
+          @include transition(all $tmg-f2 ease-in-out 0s);
+
+          height: 100%;
+          width: 100%;
+          padding: ($baseline/2);
+
+          // CASE: long length
+          &.long {
+            width: 100%;
+          }
+
+          // CASE: short length
+          &.short {
+            width: 25%;
+          }
+        }
+
+        // CASE: specific release + due times/dates
+        .start-date,
+        .start-time,
+        .due-date,
+        .due-time {
+          width: ($baseline*7);
+        }
+      }
+
+      // CASE: select input
+      .field-select {
+        .label, .input {
+          display: inline-block;
+          vertical-align: middle;
+        }
+
+        .label {
+          margin-right: ($baseline/2);
+        }
+
+        .input {
+          width: 100%;
+        }
+      }
+    }
+
+    .edit-settings-grading {
+      .grading-type {
+        margin-bottom: $baseline;
+      }
+    }
+  }
+
+  // outline: bulk publishing items
+  .bulkpublish-section-modal,
+  .bulkpublish-subsection-modal,
+  .bulkpublish-unit-modal {
+    .modal-introduction {
+      color: $gray-d2;
+    }
+
+    .modal-section .outline-bulkpublish {
+      max-height: ($baseline*20);
+      overflow-y: auto;
+    }
+
+    .outline-section,
+    .outline-subsection {
+      border: none;
+      padding: 0;
+    }
+
+    .outline-subsection {
+      margin-bottom: $baseline;
+      padding-right: ($baseline/4);
+    }
+
+    .outline-subsection .subsection-title {
+      @extend %t-title8;
+
+      margin-bottom: ($baseline/4);
+      font-weight: 600;
+      color: $gray-l2;
+      text-transform: uppercase;
+    }
+
+    .outline-unit .unit-title, .outline-unit .unit-status {
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .outline-unit .unit-title {
+      @extend %t-title7;
+
+      color: $color-heading-base;
+    }
+
+    .outline-unit .unit-status {
+      @extend %t-copy-sub2;
+
+      text-align: right;
+    }
+
+  }
+
+  // it is the only element there
+  .bulkpublish-unit-modal {
+    .modal-introduction {
+      margin-bottom: 0;
+    }
+  }
+
 }

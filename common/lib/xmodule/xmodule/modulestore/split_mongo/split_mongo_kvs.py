@@ -1,163 +1,192 @@
 import copy
-from xblock.core import Scope
+from contracts import contract, new_contract
+from xblock.fields import Scope
 from collections import namedtuple
-from xblock.runtime import KeyValueStore, InvalidScopeError
+from xblock.exceptions import InvalidScopeError
 from .definition_lazy_loader import DefinitionLazyLoader
+from xmodule.modulestore.inheritance import InheritanceKeyValueStore
+from opaque_keys.edx.locator import BlockUsageLocator
+from xblock.core import XBlockAside
 
 # id is a BlockUsageLocator, def_id is the definition's guid
 SplitMongoKVSid = namedtuple('SplitMongoKVSid', 'id, def_id')
+new_contract('BlockUsageLocator', BlockUsageLocator)
 
 
-# TODO should this be here or w/ x_module or ???
-class SplitMongoKVS(KeyValueStore):
+class SplitMongoKVS(InheritanceKeyValueStore):
     """
     A KeyValueStore that maps keyed data access to one of the 3 data areas
     known to the MongoModuleStore (data, children, and metadata)
     """
-    def __init__(self, definition, children, metadata, _inherited_metadata, location, category):
+
+    VALID_SCOPES = (Scope.parent, Scope.children, Scope.settings, Scope.content)
+
+    @contract(parent="BlockUsageLocator | None")
+    def __init__(self, definition, initial_values, default_values, parent, aside_fields=None, field_decorator=None):
         """
 
-        :param definition:
-        :param children:
-        :param metadata: the locally defined value for each metadata field
-        :param _inherited_metadata: the value of each inheritable field from above this.
-            Note, metadata may override and disagree w/ this b/c this says what the value
-            should be if metadata is undefined for this field.
+        :param definition: either a lazyloader or definition id for the definition
+        :param initial_values: a dictionary of the locally set values
+        :param default_values: any Scope.settings field defaults that are set locally
+            (copied from a template block with copy_from_template)
         """
-        # ensure kvs's don't share objects w/ others so that changes can't appear in separate ones
-        # the particular use case was that changes to kvs's were polluting caches. My thinking was
-        # that kvs's should be independent thus responsible for the isolation.
-        if isinstance(definition, DefinitionLazyLoader):
-            self._definition = definition
+        # deepcopy so that manipulations of fields does not pollute the source
+        super(SplitMongoKVS, self).__init__(copy.deepcopy(initial_values))
+        self._definition = definition  # either a DefinitionLazyLoader or the db id of the definition.
+        # if the db id, then the definition is presumed to be loaded into _fields
+
+        self._defaults = default_values
+        # a decorator function for field values (to be called when a field is accessed)
+        if field_decorator is None:
+            self.field_decorator = lambda x: x
         else:
-            self._definition = copy.copy(definition)
-        self._children = copy.copy(children)
-        self._metadata = copy.copy(metadata)
-        self._inherited_metadata = _inherited_metadata
-        self._location = location
-        self._category = category
+            self.field_decorator = field_decorator
+
+        self.parent = parent
+        self.aside_fields = aside_fields if aside_fields else {}
 
     def get(self, key):
-        if key.scope == Scope.children:
-            return self._children
-        elif key.scope == Scope.parent:
-            return None
-        elif key.scope == Scope.settings:
-            if key.field_name in self._metadata:
-                return self._metadata[key.field_name]
-            elif key.field_name in self._inherited_metadata:
-                return self._inherited_metadata[key.field_name]
-            else:
-                raise KeyError()
-        elif key.scope == Scope.content:
-            if key.field_name == 'location':
-                return self._location
-            elif key.field_name == 'category':
-                return self._category
-            else:
-                if isinstance(self._definition, DefinitionLazyLoader):
-                    self._definition = self._definition.fetch()
-                if (key.field_name == 'data' and
-                        not isinstance(self._definition.get('data'), dict)):
-                    return self._definition.get('data')
-                elif 'data' not in self._definition or key.field_name not in self._definition['data']:
+        if key.block_family == XBlockAside.entry_point:
+            if key.scope not in self.VALID_SCOPES:
+                raise InvalidScopeError(key, self.VALID_SCOPES)
+
+            if key.block_scope_id.block_type not in self.aside_fields:
+                # load the definition to see if it has the aside_fields
+                self._load_definition()
+                if key.block_scope_id.block_type not in self.aside_fields:
                     raise KeyError()
-                else:
-                    return self._definition['data'][key.field_name]
+            aside_fields = self.aside_fields[key.block_scope_id.block_type]
+            # load the field, if needed
+            if key.field_name not in aside_fields:
+                self._load_definition()
+
+            if key.field_name in aside_fields:
+                return self.field_decorator(aside_fields[key.field_name])
+
+            raise KeyError()
         else:
-            raise InvalidScopeError(key.scope)
+            # load the field, if needed
+            if key.field_name not in self._fields:
+                if key.scope == Scope.parent:
+                    return self.parent
+                if key.scope == Scope.children:
+                    # didn't find children in _fields; so, see if there's a default
+                    raise KeyError()
+                elif key.scope == Scope.settings:
+                    # get default which may be the inherited value
+                    raise KeyError()
+                elif key.scope == Scope.content:
+                    if isinstance(self._definition, DefinitionLazyLoader):
+                        self._load_definition()
+                    else:
+                        raise KeyError()
+                else:
+                    raise InvalidScopeError(key)
+
+            if key.field_name in self._fields:
+                field_value = self._fields[key.field_name]
+                # return the "decorated" field value
+                return self.field_decorator(field_value)
+
+            return None
 
     def set(self, key, value):
-        # TODO cache db update implications & add method to invoke
-        if key.scope == Scope.children:
-            self._children = value
-            # TODO remove inheritance from any orphaned exchildren
-            # TODO add inheritance to any new children
-        elif key.scope == Scope.settings:
-            # TODO if inheritable, push down to children who don't override
-            self._metadata[key.field_name] = value
-        elif key.scope == Scope.content:
-            if key.field_name == 'location':
-                self._location = value
-            elif key.field_name == 'category':
-                self._category = value
-            else:
-                if isinstance(self._definition, DefinitionLazyLoader):
-                    self._definition = self._definition.fetch()
-                if (key.field_name == 'data' and
-                        not isinstance(self._definition.get('data'), dict)):
-                    self._definition.get('data')
-                else:
-                    self._definition.setdefault('data', {})[key.field_name] = value
+        # handle any special cases
+        if key.scope not in self.VALID_SCOPES:
+            raise InvalidScopeError(key, self.VALID_SCOPES)
+        if key.scope == Scope.content:
+            self._load_definition()
+
+        if key.block_family == XBlockAside.entry_point:
+            if key.scope == Scope.children:
+                raise InvalidScopeError(key)
+
+            self.aside_fields.setdefault(key.block_scope_id.block_type, {})[key.field_name] = value
         else:
-            raise InvalidScopeError(key.scope)
+            # set the field
+            self._fields[key.field_name] = value
+
+            # This function is currently incomplete: it doesn't handle side effects.
+            # To complete this function, here is some pseudocode for what should happen:
+            #
+            # if key.scope == Scope.children:
+            #     remove inheritance from any exchildren
+            #     add inheritance to any new children
+            # if key.scope == Scope.settings:
+            #     if inheritable, push down to children
 
     def delete(self, key):
-        # TODO cache db update implications & add method to invoke
-        if key.scope == Scope.children:
-            self._children = []
-        elif key.scope == Scope.settings:
-            # TODO if inheritable, ensure _inherited_metadata has value from above and
-            # revert children to that value
-            if key.field_name in self._metadata:
-                del self._metadata[key.field_name]
-        elif key.scope == Scope.content:
-            # don't allow deletion of location nor category
-            if key.field_name == 'location':
-                pass
-            elif key.field_name == 'category':
-                pass
-            else:
-                if isinstance(self._definition, DefinitionLazyLoader):
-                    self._definition = self._definition.fetch()
-                if (key.field_name == 'data' and
-                        not isinstance(self._definition.get('data'), dict)):
-                    self._definition.setdefault('data', None)
-                else:
-                    try:
-                        del self._definition['data'][key.field_name]
-                    except KeyError:
-                        pass
+        # handle any special cases
+        if key.scope not in self.VALID_SCOPES:
+            raise InvalidScopeError(key, self.VALID_SCOPES)
+        if key.scope == Scope.content:
+            self._load_definition()
+
+        if key.block_family == XBlockAside.entry_point:
+            if key.scope == Scope.children:
+                raise InvalidScopeError(key)
+
+            if key.block_scope_id.block_type in self.aside_fields \
+                    and key.field_name in self.aside_fields[key.block_scope_id.block_type]:
+                del self.aside_fields[key.block_scope_id.block_type][key.field_name]
         else:
-            raise InvalidScopeError(key.scope)
+            # delete the field value
+            if key.field_name in self._fields:
+                del self._fields[key.field_name]
 
     def has(self, key):
-        if key.scope in (Scope.children, Scope.parent):
-            return True
-        elif key.scope == Scope.settings:
-            return key.field_name in self._metadata or key.field_name in self._inherited_metadata
-        elif key.scope == Scope.content:
-            if key.field_name == 'location':
-                return True
-            elif key.field_name == 'category':
-                return self._category is not None
-            else:
-                if isinstance(self._definition, DefinitionLazyLoader):
-                    self._definition = self._definition.fetch()
-                if (key.field_name == 'data' and
-                        not isinstance(self._definition.get('data'), dict)):
-                    return self._definition.get('data') is not None
-                else:
-                    return key.field_name in self._definition.get('data', {})
-        else:
+        """
+        Is the given field explicitly set in this kvs (neither inherited nor default)
+        """
+        # handle any special cases
+        if key.scope not in self.VALID_SCOPES:
             return False
 
-    def get_data(self):
+        if key.scope == Scope.content:
+            self._load_definition()
+        elif key.scope == Scope.parent:
+            return True
+
+        if key.block_family == XBlockAside.entry_point:
+            if key.scope == Scope.children:
+                return False
+
+            b_type = key.block_scope_id.block_type
+            return b_type in self.aside_fields and key.field_name in self.aside_fields[b_type]
+        else:
+            # it's not clear whether inherited values should return True. Right now they don't
+            # if someone changes it so that they do, then change any tests of field.name in xx._field_data
+            return key.field_name in self._fields
+
+    def has_default_value(self, field_name):
         """
-        Intended only for use by persistence layer to get the native definition['data'] rep
+        Is the given field has default value in this kvs
+        """
+        return field_name in self._defaults
+
+    def default(self, key):
+        """
+        Check to see if the default should be from the template's defaults (if any)
+        rather than the global default or inheritance.
+        """
+        if self._defaults and key.field_name in self._defaults:
+            return self._defaults[key.field_name]
+        # If not, try inheriting from a parent, then use the XBlock type's normal default value:
+        return super(SplitMongoKVS, self).default(key)
+
+    def _load_definition(self):
+        """
+        Update fields w/ the lazily loaded definitions
         """
         if isinstance(self._definition, DefinitionLazyLoader):
-            self._definition = self._definition.fetch()
-        return self._definition.get('data')
-
-    def get_own_metadata(self):
-        """
-        Get the metadata explicitly set on this element.
-        """
-        return self._metadata
-
-    def get_inherited_metadata(self):
-        """
-        Get the metadata set by the ancestors (which own metadata may override or not)
-        """
-        return self._inherited_metadata
+            persisted_definition = self._definition.fetch()
+            if persisted_definition is not None:
+                fields = self._definition.field_converter(persisted_definition.get('fields'))
+                self._fields.update(fields)
+                aside_fields_p = persisted_definition.get('aside_fields')
+                if aside_fields_p:
+                    aside_fields = self._definition.field_converter(aside_fields_p)
+                    for aside_type, fields in aside_fields.iteritems():
+                        self.aside_fields.setdefault(aside_type, {}).update(fields)
+                # do we want to cache any of the edit_info?
+            self._definition = None  # already loaded

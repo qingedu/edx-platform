@@ -12,12 +12,23 @@ file and check it in at the same time as your model changes. To do that,
 ASSUMPTIONS: modules have unique IDs, even across different module_types
 
 """
-from uuid import uuid4
+import csv
+import hashlib
 import json
+import logging
+import os.path
+from uuid import uuid4
 
+from boto.exception import BotoServerError
+from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.db import models, transaction
 
+from openedx.core.djangoapps.xmodule_django.models import CourseKeyField
+from openedx.core.storage import get_storage
+
+logger = logging.getLogger(__name__)
 
 # define custom states used by InstructorTask
 QUEUING = 'QUEUING'
@@ -46,8 +57,11 @@ class InstructorTask(models.Model):
     `created` stores date that entry was first created
     `updated` stores date that entry was last modified
     """
+    class Meta(object):
+        app_label = "instructor_task"
+
     task_type = models.CharField(max_length=50, db_index=True)
-    course_id = models.CharField(max_length=255, db_index=True)
+    course_id = CourseKeyField(max_length=255, db_index=True)
     task_key = models.CharField(max_length=255, db_index=True)
     task_input = models.CharField(max_length=255)
     task_id = models.CharField(max_length=255, db_index=True)  # max_length from celery_taskmeta
@@ -56,6 +70,7 @@ class InstructorTask(models.Model):
     requester = models.ForeignKey(User, db_index=True)
     created = models.DateTimeField(auto_now_add=True, null=True)
     updated = models.DateTimeField(auto_now=True)
+    subtasks = models.TextField(blank=True)  # JSON dictionary
 
     def __repr__(self):
         return 'InstructorTask<%r>' % ({
@@ -74,13 +89,6 @@ class InstructorTask(models.Model):
     def create(cls, course_id, task_type, task_key, task_input, requester):
         """
         Create an instance of InstructorTask.
-
-        The InstructorTask.save_now method makes sure the InstructorTask entry is committed.
-        When called from any view that is wrapped by TransactionMiddleware,
-        and thus in a "commit-on-success" transaction, an autocommit buried within here
-        will cause any pending transaction to be committed by a successful
-        save here.  Any future database operations will take place in a
-        separate transaction.
         """
         # create the task_id here, and pass it into celery:
         task_id = str(uuid4())
@@ -107,17 +115,10 @@ class InstructorTask(models.Model):
 
         return instructor_task
 
-    @transaction.autocommit
+    @transaction.atomic
     def save_now(self):
         """
         Writes InstructorTask immediately, ensuring the transaction is committed.
-
-        Autocommit annotation makes sure the database entry is committed.
-        When called from any view that is wrapped by TransactionMiddleware,
-        and thus in a "commit-on-success" transaction, this autocommit here
-        will cause any pending transaction to be committed by a successful
-        save here.  Any future database operations will take place in a
-        separate transaction.
         """
         self.save()
 
@@ -147,7 +148,7 @@ class InstructorTask(models.Model):
         Truncation is indicated by adding "..." to the end of the value.
         """
         tag = '...'
-        task_progress = {'exception': type(exception).__name__, 'message': str(exception.message)}
+        task_progress = {'exception': type(exception).__name__, 'message': unicode(exception.message)}
         if traceback_string is not None:
             # truncate any traceback that goes into the InstructorTask model:
             task_progress['traceback'] = traceback_string
@@ -175,3 +176,135 @@ class InstructorTask(models.Model):
     def create_output_for_revoked():
         """Creates standard message to store in output format for revoked tasks."""
         return json.dumps({'message': 'Task revoked before running'})
+
+
+class ReportStore(object):
+    """
+    Simple abstraction layer that can fetch and store CSV files for reports
+    download. Should probably refactor later to create a ReportFile object that
+    can simply be appended to for the sake of memory efficiency, rather than
+    passing in the whole dataset. Doing that for now just because it's simpler.
+    """
+    @classmethod
+    def from_config(cls, config_name):
+        """
+        Return one of the ReportStore subclasses depending on django
+        configuration. Look at subclasses for expected configuration.
+        """
+        # Convert old configuration parameters to those expected by
+        # DjangoStorageReportStore for backward compatibility
+        config = getattr(settings, config_name, {})
+        storage_type = config.get('STORAGE_TYPE', '').lower()
+        if storage_type == 's3':
+            return DjangoStorageReportStore(
+                storage_class='openedx.core.storage.S3ReportStorage',
+                storage_kwargs={
+                    'bucket': config['BUCKET'],
+                    'location': config['ROOT_PATH'],
+                    'custom_domain': config.get("CUSTOM_DOMAIN", None),
+                    'querystring_expire': 300,
+                    'gzip': True,
+                },
+            )
+        elif storage_type == 'localfs':
+            return DjangoStorageReportStore(
+                storage_class='django.core.files.storage.FileSystemStorage',
+                storage_kwargs={
+                    'location': config['ROOT_PATH'],
+                },
+            )
+        return DjangoStorageReportStore.from_config(config_name)
+
+    def _get_utf8_encoded_rows(self, rows):
+        """
+        Given a list of `rows` containing unicode strings, return a
+        new list of rows with those strings encoded as utf-8 for CSV
+        compatibility.
+        """
+        for row in rows:
+            yield [unicode(item).encode('utf-8') for item in row]
+
+
+class DjangoStorageReportStore(ReportStore):
+    """
+    ReportStore implementation that delegates to django's storage api.
+    """
+    def __init__(self, storage_class=None, storage_kwargs=None):
+        if storage_kwargs is None:
+            storage_kwargs = {}
+        self.storage = get_storage(storage_class, **storage_kwargs)
+
+    @classmethod
+    def from_config(cls, config_name):
+        """
+        By default, the default file storage specified by the `DEFAULT_FILE_STORAGE`
+        setting will be used. To configure the storage used, add a dict in
+        settings with the following fields::
+
+            STORAGE_CLASS : The import path of the storage class to use. If
+                            not set, the DEFAULT_FILE_STORAGE setting will be used.
+            STORAGE_KWARGS : An optional dict of kwargs to pass to the storage
+                             constructor. This can be used to specify a
+                             different S3 bucket or root path, for example.
+
+        Reference the setting name when calling `.from_config`.
+        """
+        return cls(
+            getattr(settings, config_name).get('STORAGE_CLASS'),
+            getattr(settings, config_name).get('STORAGE_KWARGS'),
+        )
+
+    def store(self, course_id, filename, buff):
+        """
+        Store the contents of `buff` in a directory determined by hashing
+        `course_id`, and name the file `filename`. `buff` can be any file-like
+        object, ready to be read from the beginning.
+        """
+        path = self.path_to(course_id, filename)
+        self.storage.save(path, buff)
+
+    def store_rows(self, course_id, filename, rows):
+        """
+        Given a course_id, filename, and rows (each row is an iterable of
+        strings), write the rows to the storage backend in csv format.
+        """
+        output_buffer = ContentFile('')
+        csvwriter = csv.writer(output_buffer)
+        csvwriter.writerows(self._get_utf8_encoded_rows(rows))
+        output_buffer.seek(0)
+        self.store(course_id, filename, output_buffer)
+
+    def links_for(self, course_id):
+        """
+        For a given `course_id`, return a list of `(filename, url)` tuples.
+        Calls the `url` method of the underlying storage backend. Returned
+        urls can be plugged straight into an href
+        """
+        course_dir = self.path_to(course_id)
+        try:
+            _, filenames = self.storage.listdir(course_dir)
+        except OSError:
+            # Django's FileSystemStorage fails with an OSError if the course
+            # dir does not exist; other storage types return an empty list.
+            return []
+        except BotoServerError as ex:
+            logger.error(
+                u'Fetching files failed for course: %s, status: %s, reason: %s',
+                course_id,
+                ex.status,
+                ex.reason
+            )
+            return []
+        files = [(filename, os.path.join(course_dir, filename)) for filename in filenames]
+        files.sort(key=lambda f: self.storage.modified_time(f[1]), reverse=True)
+        return [
+            (filename, self.storage.url(full_path))
+            for filename, full_path in files
+        ]
+
+    def path_to(self, course_id, filename=''):
+        """
+        Return the full path to a given file for a given course.
+        """
+        hashed_course_id = hashlib.sha1(course_id.to_deprecated_string()).hexdigest()
+        return os.path.join(hashed_course_id, filename)

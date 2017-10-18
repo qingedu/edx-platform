@@ -1,10 +1,5 @@
 describe 'Courseware', ->
   describe 'start', ->
-    it 'create the navigation', ->
-      spyOn(window, 'Navigation')
-      Courseware.start()
-      expect(window.Navigation).toHaveBeenCalled()
-
     it 'binds the Logger', ->
       spyOn(Logger, 'bind')
       Courseware.start()
@@ -17,7 +12,7 @@ describe 'Courseware', ->
       spyOn(window, 'Histogram')
       spyOn(window, 'Problem')
       spyOn(window, 'Video')
-      spyOn(XModule, 'loadModules')
+      spyOn(XBlock, 'initializeBlocks')
       setFixtures """
         <div class="course-content">
           <div id="video_1" class="video" data-streams="1.0:abc1234"></div>
@@ -30,7 +25,7 @@ describe 'Courseware', ->
       @courseware.render()
 
     it 'ensure that the XModules have been loaded', ->
-      expect(XModule.loadModules).toHaveBeenCalled()
+      expect(XBlock.initializeBlocks).toHaveBeenCalled()
 
     it 'detect the histrogram element and convert it', ->
       expect(window.Histogram).toHaveBeenCalledWith('3', [[0, 1]])

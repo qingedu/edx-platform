@@ -37,7 +37,7 @@ class ResponseXMLFactory(object):
         For all response types, **kwargs can contain:
 
         *question_text*: The text of the question to display,
-            wrapped in <p> tags.
+            wrapped in <label> tags.
 
         *explanation_text*: The detailed explanation that will
             be shown if the user answers incorrectly.
@@ -49,6 +49,9 @@ class ResponseXMLFactory(object):
         *num_inputs*: The number of input elements
             to create [DEFAULT: 1]
 
+        *credit_type*: String of comma-separated words specifying the
+            partial credit grading scheme.
+
         Returns a string representation of the XML tree.
         """
 
@@ -58,6 +61,7 @@ class ResponseXMLFactory(object):
         script = kwargs.get('script', None)
         num_responses = kwargs.get('num_responses', 1)
         num_inputs = kwargs.get('num_inputs', 1)
+        credit_type = kwargs.get('credit_type', None)
 
         # The root is <problem>
         root = etree.Element("problem")
@@ -68,19 +72,24 @@ class ResponseXMLFactory(object):
             script_element.set("type", "loncapa/python")
             script_element.text = str(script)
 
-        # The problem has a child <p> with question text
-        question = etree.SubElement(root, "p")
-        question.text = question_text
-
         # Add the response(s)
-        for i in range(0, int(num_responses)):
+        for __ in range(int(num_responses)):
             response_element = self.create_response_element(**kwargs)
+
+            # Set partial credit
+            if credit_type is not None:
+                response_element.set('partial_credit', str(credit_type))
+
             root.append(response_element)
 
+            # Add the question label
+            question = etree.SubElement(response_element, "label")
+            question.text = question_text
+
             # Add input elements
-            for j in range(0, int(num_inputs)):
+            for __ in range(int(num_inputs)):
                 input_element = self.create_input_element(**kwargs)
-                if not (None == input_element):
+                if not None == input_element:
                     response_element.append(input_element)
 
             # The problem has an explanation of the solution
@@ -104,8 +113,12 @@ class ResponseXMLFactory(object):
         """
         math_display = kwargs.get('math_display', False)
         size = kwargs.get('size', None)
+        input_element_label = kwargs.get('input_element_label', '')
 
         input_element = etree.Element('textline')
+
+        if input_element_label:
+            input_element.set('label', input_element_label)
 
         if math_display:
             input_element.set('math', '1')
@@ -132,25 +145,41 @@ class ResponseXMLFactory(object):
         *choice_names": List of strings identifying the choices.
                         If specified, you must ensure that
                         len(choice_names) == len(choices)
+
+        *points*: List of strings giving partial credit values (0-1)
+                  for each choice. Interpreted as floats in problem.
+                  If specified, ensure len(points) == len(choices)
         """
         # Names of group elements
-        group_element_names = {'checkbox': 'checkboxgroup',
-                                'radio': 'radiogroup',
-                                'multiple': 'choicegroup'}
+        group_element_names = {
+            'checkbox': 'checkboxgroup',
+            'radio': 'radiogroup',
+            'multiple': 'choicegroup'
+        }
 
         # Retrieve **kwargs
         choices = kwargs.get('choices', [True])
         choice_type = kwargs.get('choice_type', 'multiple')
         choice_names = kwargs.get('choice_names', [None] * len(choices))
+        points = kwargs.get('points', [None] * len(choices))
 
         # Create the <choicegroup>, <checkboxgroup>, or <radiogroup> element
-        assert(choice_type in group_element_names)
+        assert choice_type in group_element_names
         group_element = etree.Element(group_element_names[choice_type])
 
         # Create the <choice> elements
-        for (correct_val, name) in zip(choices, choice_names):
+        for (correct_val, name, pointval) in zip(choices, choice_names, points):
             choice_element = etree.SubElement(group_element, "choice")
-            choice_element.set("correct", "true" if correct_val else "false")
+            if correct_val is True:
+                correctness = 'true'
+            elif correct_val is False:
+                correctness = 'false'
+            elif 'partial' in correct_val:
+                correctness = 'partial'
+            else:
+                correctness = correct_val
+
+            choice_element.set('correct', correctness)
 
             # Add a name identifying the choice, if one exists
             # For simplicity, we use the same string as both the
@@ -158,6 +187,10 @@ class ResponseXMLFactory(object):
             if name:
                 choice_element.text = str(name)
                 choice_element.set("name", str(name))
+
+            # Add point values for partially-correct choices.
+            if pointval:
+                choice_element.set("point_value", str(pointval))
 
         return group_element
 
@@ -171,23 +204,62 @@ class NumericalResponseXMLFactory(ResponseXMLFactory):
 
         *answer*: The correct answer (e.g. "5")
 
+        *correcthint*: The feedback describing correct answer.
+
+        *additional_answers*: A dict of additional answers along with their correcthint.
+
         *tolerance*: The tolerance within which a response
         is considered correct.  Can be a decimal (e.g. "0.01")
         or percentage (e.g. "2%")
+
+        *credit_type*: String of comma-separated words specifying the
+        partial credit grading scheme.
+
+        *partial_range*: The multiplier for the tolerance that will
+        still provide partial credit in the "close" grading style
+
+        *partial_answers*: A string of comma-separated alternate
+        answers that will receive partial credit in the "list" style
         """
 
         answer = kwargs.get('answer', None)
+        correcthint = kwargs.get('correcthint', '')
+        additional_answers = kwargs.get('additional_answers', {})
         tolerance = kwargs.get('tolerance', None)
+        credit_type = kwargs.get('credit_type', None)
+        partial_range = kwargs.get('partial_range', None)
+        partial_answers = kwargs.get('partial_answers', None)
 
         response_element = etree.Element('numericalresponse')
 
         if answer:
-            response_element.set('answer', str(answer))
+            if isinstance(answer, float):
+                response_element.set('answer', repr(answer))
+            else:
+                response_element.set('answer', str(answer))
+
+        for additional_answer, additional_correcthint in additional_answers.items():
+            additional_element = etree.SubElement(response_element, 'additional_answer')
+            additional_element.set('answer', str(additional_answer))
+            if additional_correcthint:
+                correcthint_element = etree.SubElement(additional_element, 'correcthint')
+                correcthint_element.text = str(additional_correcthint)
 
         if tolerance:
             responseparam_element = etree.SubElement(response_element, 'responseparam')
             responseparam_element.set('type', 'tolerance')
             responseparam_element.set('default', str(tolerance))
+            if partial_range is not None and 'close' in credit_type:
+                responseparam_element.set('partial_range', str(partial_range))
+
+        if partial_answers is not None and 'list' in credit_type:
+            # The line below throws a false positive pylint violation, so it's excepted.
+            responseparam_element = etree.SubElement(response_element, 'responseparam')
+            responseparam_element.set('partial_answers', partial_answers)
+
+        if correcthint:
+            correcthint_element = etree.SubElement(response_element, 'correcthint')
+            correcthint_element.text = str(correcthint)
 
         return response_element
 
@@ -215,11 +287,15 @@ class CustomResponseXMLFactory(ResponseXMLFactory):
         *expect*: The value passed to the function cfn
 
         *answer*: Inline script that calculates the answer
+
+        *answer_attr*: The "answer" attribute on the tag itself (treated as an
+        alias to "expect", though "expect" takes priority if both are given)
         """
 
         # Retrieve **kwargs
         cfn = kwargs.get('cfn', None)
         expect = kwargs.get('expect', None)
+        answer_attr = kwargs.get('answer_attr', None)
         answer = kwargs.get('answer', None)
         options = kwargs.get('options', None)
         cfn_extra_args = kwargs.get('cfn_extra_args', None)
@@ -233,6 +309,9 @@ class CustomResponseXMLFactory(ResponseXMLFactory):
         if expect:
             response_element.set('expect', str(expect))
 
+        if answer_attr:
+            response_element.set('answer', str(answer_attr))
+
         if answer:
             answer_element = etree.SubElement(response_element, "answer")
             answer_element.text = str(answer)
@@ -243,27 +322,6 @@ class CustomResponseXMLFactory(ResponseXMLFactory):
         if cfn_extra_args:
             response_element.set('cfn_extra_args', str(cfn_extra_args))
 
-        return response_element
-
-    def create_input_element(self, **kwargs):
-        return ResponseXMLFactory.textline_input_xml(**kwargs)
-
-
-class SymbolicResponseXMLFactory(ResponseXMLFactory):
-    """ Factory for creating <symbolicresponse> XML trees """
-
-    def create_response_element(self, **kwargs):
-        cfn = kwargs.get('cfn', None)
-        answer = kwargs.get('answer', None)
-        options = kwargs.get('options', None)
-
-        response_element = etree.Element("symbolicresponse")
-        if cfn:
-            response_element.set('cfn', str(cfn))
-        if answer:
-            response_element.set('answer', str(answer))
-        if options:
-            response_element.set('options', str(options))
         return response_element
 
     def create_input_element(self, **kwargs):
@@ -314,24 +372,43 @@ class CodeResponseXMLFactory(ResponseXMLFactory):
         return super(CodeResponseXMLFactory, self).build_xml(**kwargs)
 
     def create_response_element(self, **kwargs):
-        """ Create a <coderesponse> XML element:
+        """
+        Create a <coderesponse> XML element.
 
-            Uses **kwargs:
+        Uses **kwargs:
 
-            *initial_display*: The code that initially appears in the textbox
-                                [DEFAULT: "Enter code here"]
-            *answer_display*: The answer to display to the student
-                                [DEFAULT: "This is the correct answer!"]
-            *grader_payload*: A JSON-encoded string sent to the grader
-                                [DEFAULT: empty dict string]
+        *initial_display*: The code that initially appears in the textbox
+                            [DEFAULT: "Enter code here"]
+        *answer_display*: The answer to display to the student
+                            [DEFAULT: "This is the correct answer!"]
+        *grader_payload*: A JSON-encoded string sent to the grader
+                            [DEFAULT: empty dict string]
+        *allowed_files*: A space-separated string of file names.
+                            [DEFAULT: None]
+        *required_files*: A space-separated string of file names.
+                            [DEFAULT: None]
+
         """
         # Get **kwargs
         initial_display = kwargs.get("initial_display", "Enter code here")
         answer_display = kwargs.get("answer_display", "This is the correct answer!")
         grader_payload = kwargs.get("grader_payload", '{}')
+        allowed_files = kwargs.get("allowed_files", None)
+        required_files = kwargs.get("required_files", None)
 
         # Create the <coderesponse> element
         response_element = etree.Element("coderesponse")
+
+        # If files are involved, create the <filesubmission> element.
+        has_files = allowed_files or required_files
+        if has_files:
+            filesubmission_element = etree.SubElement(response_element, "filesubmission")
+            if allowed_files:
+                filesubmission_element.set("allowed_files", allowed_files)
+            if required_files:
+                filesubmission_element.set("required_files", required_files)
+
+        # Create the <codeparam> element.
         codeparam_element = etree.SubElement(response_element, "codeparam")
 
         # Set the initial display text
@@ -347,8 +424,9 @@ class CodeResponseXMLFactory(ResponseXMLFactory):
         grader_element.text = str(grader_payload)
 
         # Create the input within the response
-        input_element = etree.SubElement(response_element, "textbox")
-        input_element.set("mode", "python")
+        if not has_files:
+            input_element = etree.SubElement(response_element, "textbox")
+            input_element.set("mode", "python")
 
         return response_element
 
@@ -408,8 +486,8 @@ class FormulaResponseXMLFactory(ResponseXMLFactory):
         answer = kwargs.get("answer", None)
         hint_list = kwargs.get("hints", None)
 
-        assert(answer)
-        assert(sample_dict and num_samples)
+        assert answer
+        assert sample_dict and num_samples
 
         # Create the <formularesponse> element
         response_element = etree.Element("formularesponse")
@@ -417,7 +495,6 @@ class FormulaResponseXMLFactory(ResponseXMLFactory):
         # Set the sample information
         sample_str = self._sample_str(sample_dict, num_samples, tolerance)
         response_element.set("samples", sample_str)
-
 
         # Set the tolerance
         responseparam_element = etree.SubElement(response_element, "responseparam")
@@ -461,13 +538,14 @@ class FormulaResponseXMLFactory(ResponseXMLFactory):
         # "x,y,z@4,5,3:10,12,8#4" means plug in values for (x,y,z)
         # from within the box defined by points (4,5,3) and (10,12,8)
         # The "#4" means to repeat 4 times.
-        variables = [str(v) for v in sample_dict.keys()]
         low_range_vals = [str(f[0]) for f in sample_dict.values()]
         high_range_vals = [str(f[1]) for f in sample_dict.values()]
-        sample_str = (",".join(sample_dict.keys()) + "@" +
-                        ",".join(low_range_vals) + ":" +
-                        ",".join(high_range_vals) +
-                        "#" + str(num_samples))
+        sample_str = (
+            ",".join(sample_dict.keys()) + "@" +
+            ",".join(low_range_vals) + ":" +
+            ",".join(high_range_vals) +
+            "#" + str(num_samples)
+        )
         return sample_str
 
 
@@ -477,7 +555,6 @@ class ImageResponseXMLFactory(ResponseXMLFactory):
     def create_response_element(self, **kwargs):
         """ Create the <imageresponse> element."""
         return etree.Element("imageresponse")
-
 
     def create_input_element(self, **kwargs):
         """ Create the <imageinput> element.
@@ -514,7 +591,7 @@ class ImageResponseXMLFactory(ResponseXMLFactory):
         rectangle = kwargs.get('rectangle', None)
         regions = kwargs.get('regions', None)
 
-        assert(rectangle or regions)
+        assert rectangle or regions
 
         # Create the <imageinput> element
         input_element = etree.Element("imageinput")
@@ -531,58 +608,16 @@ class ImageResponseXMLFactory(ResponseXMLFactory):
         return input_element
 
 
-class JavascriptResponseXMLFactory(ResponseXMLFactory):
-    """ Factory for producing <javascriptresponse> XML """
-
-    def create_response_element(self, **kwargs):
-        """ Create the <javascriptresponse> element.
-
-        Uses **kwargs:
-
-        *generator_src*: Name of the JS file to generate the problem.
-        *grader_src*: Name of the JS file to grade the problem.
-        *display_class*: Name of the class used to display the problem
-        *display_src*: Name of the JS file used to display the problem
-        *param_dict*: Dictionary of parameters to pass to the JS
-        """
-        # Get **kwargs
-        generator_src = kwargs.get("generator_src", None)
-        grader_src = kwargs.get("grader_src", None)
-        display_class = kwargs.get("display_class", None)
-        display_src = kwargs.get("display_src", None)
-        param_dict = kwargs.get("param_dict", {})
-
-        # Both display_src and display_class given,
-        # or neither given
-        assert((display_src and display_class) or
-                (not display_src and not display_class))
-
-        # Create the <javascriptresponse> element
-        response_element = etree.Element("javascriptresponse")
-
-        if generator_src:
-            generator_element = etree.SubElement(response_element, "generator")
-            generator_element.set("src", str(generator_src))
-
-        if grader_src:
-            grader_element = etree.SubElement(response_element, "grader")
-            grader_element.set("src", str(grader_src))
-
-        if display_class and display_src:
-            display_element = etree.SubElement(response_element, "display")
-            display_element.set("class", str(display_class))
-            display_element.set("src", str(display_src))
-
-        for (param_name, param_val) in param_dict.items():
-            responseparam_element = etree.SubElement(response_element, "responseparam")
-            responseparam_element.set("name", str(param_name))
-            responseparam_element.set("value", str(param_val))
-
-        return response_element
+class JSInputXMLFactory(CustomResponseXMLFactory):
+    """
+    Factory for producing <jsinput> XML.
+    Note that this factory currently does not create a functioning problem.
+    It will only create an empty iframe.
+    """
 
     def create_input_element(self, **kwargs):
-        """ Create the <javascriptinput> element """
-        return etree.Element("javascriptinput")
+        """ Create the <jsinput> element """
+        return etree.Element("jsinput")
 
 
 class MultipleChoiceResponseXMLFactory(ResponseXMLFactory):
@@ -631,17 +666,17 @@ class OptionResponseXMLFactory(ResponseXMLFactory):
         options_list = kwargs.get('options', None)
         correct_option = kwargs.get('correct_option', None)
 
-        assert(options_list and correct_option)
-        assert(len(options_list) > 1)
-        assert(correct_option in options_list)
+        assert options_list and correct_option
+        assert len(options_list) > 1
+        assert correct_option in options_list
 
         # Create the <optioninput> element
         optioninput_element = etree.Element("optioninput")
 
         # Set the "options" attribute
         # Format: "('first', 'second', 'third')"
-        options_attr_string = ",".join(["'%s'" % str(o) for o in options_list])
-        options_attr_string = "(%s)" % options_attr_string
+        options_attr_string = u",".join([u"'{}'".format(o) for o in options_list])
+        options_attr_string = u"({})".format(options_attr_string)
         optioninput_element.set('options', options_attr_string)
 
         # Set the "correct" attribute
@@ -670,22 +705,37 @@ class StringResponseXMLFactory(ResponseXMLFactory):
 
             *hintfn*: The name of a function in the script to use for hints.
 
+            *regexp*: Whether the response is regexp
+
+            *additional_answers*: list of additional answers.
+
+            *non_attribute_answers*: list of additional answers to be coded in the
+                non-attribute format
+
         """
         # Retrieve the **kwargs
         answer = kwargs.get("answer", None)
-        case_sensitive = kwargs.get("case_sensitive", True)
+        case_sensitive = kwargs.get("case_sensitive", None)
         hint_list = kwargs.get('hints', None)
         hint_fn = kwargs.get('hintfn', None)
+        regexp = kwargs.get('regexp', None)
+        additional_answers = kwargs.get('additional_answers', [])
+        non_attribute_answers = kwargs.get('non_attribute_answers', [])
         assert answer
 
         # Create the <stringresponse> element
         response_element = etree.Element("stringresponse")
 
         # Set the answer attribute
-        response_element.set("answer", str(answer))
+        response_element.set("answer", unicode(answer))
 
-        # Set the case sensitivity
-        response_element.set("type", "cs" if case_sensitive else "ci")
+        # Set the case sensitivity and regexp:
+        type_value = ''
+        if case_sensitive is not None:
+            type_value += "cs" if case_sensitive else "ci"
+        type_value += ' regexp' if regexp else ''
+        if type_value:
+            response_element.set("type", type_value.strip())
 
         # Add the hints if specified
         if hint_list or hint_fn:
@@ -707,6 +757,14 @@ class StringResponseXMLFactory(ResponseXMLFactory):
                 assert not hint_list
                 hintgroup_element.set("hintfn", hint_fn)
 
+        for additional_answer in additional_answers:
+            additional_node = etree.SubElement(response_element, "additional_answer")
+            additional_node.set("answer", additional_answer)
+
+        for answer in non_attribute_answers:
+            additional_node = etree.SubElement(response_element, "additional_answer")
+            additional_node.text = answer
+
         return response_element
 
     def create_input_element(self, **kwargs):
@@ -727,7 +785,7 @@ class AnnotationResponseXMLFactory(ResponseXMLFactory):
         text_children = [
             {'tag': 'title', 'text': kwargs.get('title', 'super cool annotation')},
             {'tag': 'text', 'text': kwargs.get('text', 'texty text')},
-            {'tag': 'comment', 'text':kwargs.get('comment', 'blah blah erudite comment blah blah')},
+            {'tag': 'comment', 'text': kwargs.get('comment', 'blah blah erudite comment blah blah')},
             {'tag': 'comment_prompt', 'text': kwargs.get('comment_prompt', 'type a commentary below')},
             {'tag': 'tag_prompt', 'text': kwargs.get('tag_prompt', 'select one tag')}
         ]
@@ -735,7 +793,7 @@ class AnnotationResponseXMLFactory(ResponseXMLFactory):
         for child in text_children:
             etree.SubElement(input_element, child['tag']).text = child['text']
 
-        default_options = [('green', 'correct'),('eggs', 'incorrect'), ('ham', 'partially-correct')]
+        default_options = [('green', 'correct'), ('eggs', 'incorrect'), ('ham', 'partially-correct')]
         options = kwargs.get('options', default_options)
         options_element = etree.SubElement(input_element, 'options')
 
@@ -805,7 +863,7 @@ class ChoiceTextResponseXMLFactory(ResponseXMLFactory):
         choice_inputs = []
         # Ensure that the first element of choices is an ordered
         # collection. It will start as a list, a tuple, or not a Container.
-        if type(choices[0]) not in [list, tuple]:
+        if not isinstance(choices[0], (list, tuple)):
             choices = [choices]
 
         for choice in choices:
@@ -820,7 +878,7 @@ class ChoiceTextResponseXMLFactory(ResponseXMLFactory):
 
                 # Make sure that `answers` is an ordered collection for
                 # convenience.
-                if type(answers) not in [list, tuple]:
+                if not isinstance(answers, (list, tuple)):
                     answers = [answers]
 
                 numtolerance_inputs = [

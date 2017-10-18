@@ -1,18 +1,37 @@
-##
-## A script to create some dummy users
+"""
+A script to create some dummy users
+"""
+import uuid
 
 from django.core.management.base import BaseCommand
 from student.models import CourseEnrollment
+from opaque_keys.edx.keys import CourseKey
+from student.forms import AccountCreationForm
+from student.views import _do_create_account
 
-from student.views import _do_create_account, get_random_post_override
+
+def make_random_form():
+    """
+    Generate unique user data for dummy users.
+    """
+    identification = uuid.uuid4().hex[:8]
+    return AccountCreationForm(
+        data={
+            'username': 'user_{id}'.format(id=identification),
+            'email': 'email_{id}@example.com'.format(id=identification),
+            'password': '12345',
+            'name': 'User {id}'.format(id=identification),
+        },
+        tos_required=False
+    )
 
 
-def create(n, course_id):
-    """Create n users, enrolling them in course_id if it's not None"""
-    for i in range(n):
-        (user, user_profile, _) = _do_create_account(get_random_post_override())
-        if course_id is not None:
-            CourseEnrollment.objects.create(user=user, course_id=course_id)
+def create(num, course_key):
+    """Create num users, enrolling them in course_key if it's not None"""
+    for __ in range(num):
+        (user, _, _) = _do_create_account(make_random_form())
+        if course_key is not None:
+            CourseEnrollment.enroll(user, course_key)
 
 
 class Command(BaseCommand):
@@ -31,6 +50,11 @@ Examples:
             print Command.help
             return
 
-        n = int(args[0])
-        course_id = args[1] if len(args) == 2 else None
-        create(n, course_id)
+        num = int(args[0])
+
+        if len(args) == 2:
+            course_key = CourseKey.from_string(args[1])
+        else:
+            course_key = None
+
+        create(num, course_key)

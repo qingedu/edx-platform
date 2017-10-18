@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
+
 from xmodule.contentstore.utils import restore_asset_from_trashcan
 
 
@@ -10,4 +11,3 @@ class Command(BaseCommand):
             raise CommandError("restore_asset_from_trashcan requires one argument: <location>")
 
         restore_asset_from_trashcan(args[0])
-

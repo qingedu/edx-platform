@@ -1,4 +1,4 @@
-section.poll_question {
+div.poll_question {
   @media print {
     display: block;
     width: auto;
@@ -10,18 +10,18 @@ section.poll_question {
   }
 
   .inline {
-      display: inline;
+    display: inline;
   }
 
   h3 {
     margin-top: 0;
-    margin-bottom: 15px;
+    margin-bottom: ($baseline*0.75);
     color: #fe57a1;
     font-size: 1.9em;
 
     &.problem-header {
-      section.staff {
-        margin-top: 30px;
+      div.staff {
+        margin-top: ($baseline*1.5);
         font-size: 80%;
       }
     }
@@ -39,10 +39,10 @@ section.poll_question {
   }
 
   .poll_answer {
-    margin-bottom: 20px;
+    margin-bottom: $baseline;
 
     &.short {
-        clear: both;
+      clear: both;
     }
 
     .question {
@@ -58,6 +58,8 @@ section.poll_question {
       }
 
       .button {
+        @extend %ui-fake-link;
+
         -webkit-appearance: none;
         -webkit-background-clip: padding-box;
         -webkit-border-image: none;
@@ -89,22 +91,19 @@ section.poll_question {
         box-shadow: rgb(255, 255, 255) 0px 1px 0px 0px inset;
         box-sizing: border-box;
         color: rgb(51, 51, 51);
-        cursor: pointer;
 
         /* display: inline-block; */
         display: inline;
         float: left;
-
         font-family: 'Open Sans', Verdana, Geneva, sans-serif;
         font-size: 13px;
         font-style: normal;
         font-variant: normal;
         font-weight: bold;
-
         letter-spacing: normal;
         line-height: 25.59375px;
-        margin-bottom: 15px;
-        margin: 0px;
+        margin-bottom: ($baseline*0.75);
+        margin: 0;
         padding: 0px;
         text-align: center;
         text-decoration: none;
@@ -113,13 +112,12 @@ section.poll_question {
         text-transform: none;
         vertical-align: top;
         white-space: pre-line;
-
         width: 25px;
         height: 25px;
-
         word-spacing: 0px;
         writing-mode: lr-tb;
       }
+
       .button.answered {
         -webkit-box-shadow: rgb(97, 184, 225) 0px 1px 0px 0px inset;
         background-color: rgb(29, 157, 217);
@@ -135,15 +133,16 @@ section.poll_question {
       }
 
       .text {
+        @extend %ui-fake-link;
+
         display: inline;
         float: left;
         width: 80%;
         text-align: left;
         min-height: 30px;
-        margin-left: 20px;
+        margin-left: $baseline;
         height: auto;
-        margin-bottom: 20px;
-        cursor: pointer;
+        margin-bottom: $baseline;
 
         &.short {
           width: 100px;
@@ -153,7 +152,7 @@ section.poll_question {
 
     .stats {
       min-height: 40px;
-      margin-top: 20px;
+      margin-top: $baseline;
       clear: both;
 
       &.short {
@@ -170,7 +169,7 @@ section.poll_question {
         border: 1px solid black;
         display: inline;
         float: left;
-        margin-right: 10px;
+        margin-right: ($baseline/2);
 
         &.short {
           width: 65%;

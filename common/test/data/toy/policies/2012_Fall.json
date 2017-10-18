@@ -8,11 +8,20 @@
           {"type": "courseware"},
           {"type": "course_info", "name": "Course Info"},
           {"type": "static_tab", "url_slug": "syllabus", "name": "Syllabus"},
-          {"type": "static_tab", "url_slug": "resources", "name": "Resources"},
+          {"type": "static_tab", "url_slug": "resources", "name": "Resources", "course_staff_only": true},
           {"type": "discussion", "name": "Discussion"},
           {"type": "wiki", "name": "Wiki"},
           {"type": "progress", "name": "Progress"}
-        ]
+        ],
+  "pdf_textbooks": [
+      {
+        "tab_title": "Sample Multi Chapter Textbook",
+        "id": "MyTextbook",
+        "chapters": [
+          { "url": "/c4x/edX/toy/asset/Chapter1.pdf", "title": "Chapter 1"},
+          { "url": "/c4x/edX/toy/asset/Chapter2.pdf", "title": "Chapter 2"}
+          ]
+      }]
     },
     "chapter/Overview": {
         "display_name": "Overview"

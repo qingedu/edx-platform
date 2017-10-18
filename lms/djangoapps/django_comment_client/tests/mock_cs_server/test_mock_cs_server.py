@@ -1,9 +1,11 @@
-import unittest
-import threading
 import json
+import threading
+import unittest
 import urllib2
-from mock_cs_server import MockCommentServiceServer
+
 from nose.plugins.skip import SkipTest
+
+from django_comment_client.tests.mock_cs_server.mock_cs_server import MockCommentServiceServer
 
 
 class MockCommentServiceServerTest(unittest.TestCase):
@@ -13,6 +15,8 @@ class MockCommentServiceServerTest(unittest.TestCase):
     '''
 
     def setUp(self):
+        super(MockCommentServiceServerTest, self).setUp()
+
         # This is a test of the test setup,
         # so it does not need to run as part of the unit test suite
         # You can re-enable it by commenting out the line below
@@ -27,15 +31,12 @@ class MockCommentServiceServerTest(unittest.TestCase):
         self.expected_response = {'username': 'user100', 'external_id': '4'}
         self.server = MockCommentServiceServer(port_num=server_port,
                                                response=self.expected_response)
+        self.addCleanup(self.server.shutdown)
 
         # Start the server in a separate daemon thread
         server_thread = threading.Thread(target=self.server.serve_forever)
         server_thread.daemon = True
         server_thread.start()
-
-    def tearDown(self):
-        # Stop the server, freeing up the port
-        self.server.shutdown()
 
     def test_new_user_request(self):
         """
@@ -43,10 +44,10 @@ class MockCommentServiceServerTest(unittest.TestCase):
         of how you would create a new user
         """
         # Send a request
-        values = {'username': u'user100', 'api_key': 'TEST_API_KEY',
+        values = {'username': u'user100',
                   'external_id': '4', 'email': u'user100@edx.org'}
         data = json.dumps(values)
-        headers = {'Content-Type': 'application/json', 'Content-Length': len(data)}
+        headers = {'Content-Type': 'application/json', 'Content-Length': len(data), 'X-Edx-Api-Key': 'TEST_API_KEY'}
         req = urllib2.Request(self.server_url + '/api/v1/users/4', data, headers)
 
         # Send the request to the mock cs server

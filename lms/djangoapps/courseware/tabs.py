@@ -1,376 +1,353 @@
 """
-Tabs configuration.  By the time the tab is being rendered, it's just a name,
-link, and css class (CourseTab tuple).  Tabs are specified in course policy.
-Each tab has a type, and possibly some type-specific parameters.
-
-To add a new tab type, add a TabImpl to the VALID_TAB_TYPES dict below--it will
-contain a validation function that checks whether config for the tab type is
-valid, and a generator function that takes the config, user, and course, and
-actually generates the CourseTab.
+This module is essentially a broker to xmodule/tabs.py -- it was originally introduced to
+perform some LMS-specific tab display gymnastics for the Entrance Exams feature
 """
-
-from collections import namedtuple
-import logging
-
+from courseware.access import has_access
+from courseware.entrance_exams import user_can_skip_entrance_exam
 from django.conf import settings
-from django.core.urlresolvers import reverse
-
-from courseware.access import has_access
-
-from .module_render import get_module
-from courseware.access import has_access
-from xmodule.modulestore import Location
-from xmodule.modulestore.django import modulestore
-from courseware.model_data import ModelDataCache
-
-from open_ended_grading import open_ended_notifications
-
-log = logging.getLogger(__name__)
+from django.utils.translation import ugettext as _
+from django.utils.translation import ugettext_noop
+from openedx.core.lib.course_tabs import CourseTabPluginManager
+from openedx.features.course_experience import UNIFIED_COURSE_TAB_FLAG, default_course_url_name
+from student.models import CourseEnrollment
+from xmodule.tabs import CourseTab, CourseTabList, course_reverse_func_from_name_func, key_checker
 
 
-class InvalidTabsException(Exception):
+class EnrolledTab(CourseTab):
     """
-    A complaint about invalid tabs.
+    A base class for any view types that require a user to be enrolled.
     """
-    pass
-
-CourseTabBase = namedtuple('CourseTab', 'name link is_active has_img img')
-
-
-def CourseTab(name, link, is_active, has_img=False, img=""):
-    return CourseTabBase(name, link, is_active, has_img, img)
-
-# encapsulate implementation for a tab:
-#  - a validation function: takes the config dict and raises
-#    InvalidTabsException if required fields are missing or otherwise
-#    wrong.  (e.g. "is there a 'name' field?).  Validators can assume
-#    that the type field is valid.
-#
-#  - a function that takes a config, a user, and a course, an active_page and
-#    return a list of CourseTabs.  (e.g. "return a CourseTab with specified
-#    name, link to courseware, and is_active=True/False").  The function can
-#    assume that it is only called with configs of the appropriate type that
-#    have passed the corresponding validator.
-TabImpl = namedtuple('TabImpl', 'validator generator')
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        if user is None:
+            return True
+        return bool(CourseEnrollment.is_enrolled(user, course.id) or has_access(user, 'staff', course, course.id))
 
 
-#####  Generators for various tabs.
-
-def _courseware(tab, user, course, active_page):
-    link = reverse('courseware', args=[course.id])
-    return [CourseTab('Courseware', link, active_page == "courseware")]
-
-
-def _course_info(tab, user, course, active_page):
-    link = reverse('info', args=[course.id])
-    return [CourseTab(tab['name'], link, active_page == "info")]
-
-
-def _progress(tab, user, course, active_page):
-    if user.is_authenticated():
-        link = reverse('progress', args=[course.id])
-        return [CourseTab(tab['name'], link, active_page == "progress")]
-    return []
-
-
-def _wiki(tab, user, course, active_page):
-    if settings.WIKI_ENABLED:
-        link = reverse('course_wiki', args=[course.id])
-        return [CourseTab(tab['name'], link, active_page == 'wiki')]
-    return []
-
-
-def _discussion(tab, user, course, active_page):
+class CoursewareTab(EnrolledTab):
     """
-    This tab format only supports the new Berkeley discussion forums.
+    The main courseware view.
     """
-    if settings.MITX_FEATURES.get('ENABLE_DISCUSSION_SERVICE'):
-        link = reverse('django_comment_client.forum.views.forum_form_discussion',
-                              args=[course.id])
-        return [CourseTab(tab['name'], link, active_page == 'discussion')]
-    return []
+    type = 'courseware'
+    title = ugettext_noop('Course')
+    priority = 10
+    view_name = 'courseware'
+    is_movable = False
+    is_default = False
+    supports_preview_menu = True
+
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        """
+        Returns true if this tab is enabled.
+        """
+        # If this is the unified course tab then it is always enabled
+        if UNIFIED_COURSE_TAB_FLAG.is_enabled(course.id):
+            return True
+        return super(CoursewareTab, cls).is_enabled(course, user)
+
+    @property
+    def link_func(self):
+        """
+        Returns a function that takes a course and reverse function and will
+        compute the course URL for this tab.
+        """
+        reverse_name_func = lambda course: default_course_url_name(course.id)
+        return course_reverse_func_from_name_func(reverse_name_func)
 
 
-def _external_link(tab, user, course, active_page):
-    # external links are never active
-    return [CourseTab(tab['name'], tab['link'], False)]
-
-
-def _static_tab(tab, user, course, active_page):
-    link = reverse('static_tab', args=[course.id, tab['url_slug']])
-    active_str = 'static_tab_{0}'.format(tab['url_slug'])
-    return [CourseTab(tab['name'], link, active_page == active_str)]
-
-
-def _textbooks(tab, user, course, active_page):
+class CourseInfoTab(CourseTab):
     """
-    Generates one tab per textbook.  Only displays if user is authenticated.
+    The course info view.
     """
-    if user.is_authenticated() and settings.MITX_FEATURES.get('ENABLE_TEXTBOOK'):
-        # since there can be more than one textbook, active_page is e.g. "book/0".
-        return [CourseTab(textbook.title, reverse('book', args=[course.id, index]),
-                          active_page == "textbook/{0}".format(index))
-                for index, textbook in enumerate(course.textbooks)]
-    return []
+    type = 'course_info'
+    title = ugettext_noop('Home')
+    priority = 20
+    view_name = 'info'
+    tab_id = 'info'
+    is_movable = False
+    is_default = False
 
-def _pdf_textbooks(tab, user, course, active_page):
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        return True
+
+
+class SyllabusTab(EnrolledTab):
     """
-    Generates one tab per textbook.  Only displays if user is authenticated.
+    A tab for the course syllabus.
     """
-    if user.is_authenticated():
-        # since there can be more than one textbook, active_page is e.g. "book/0".
-        return [CourseTab(textbook['tab_title'], reverse('pdf_book', args=[course.id, index]),
-                          active_page == "pdftextbook/{0}".format(index))
-                for index, textbook in enumerate(course.pdf_textbooks)]
-    return []
+    type = 'syllabus'
+    title = ugettext_noop('Syllabus')
+    priority = 30
+    view_name = 'syllabus'
+    allow_multiple = True
+    is_default = False
 
-def _html_textbooks(tab, user, course, active_page):
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        if not super(SyllabusTab, cls).is_enabled(course, user=user):
+            return False
+        return getattr(course, 'syllabus_present', False)
+
+
+class ProgressTab(EnrolledTab):
     """
-    Generates one tab per textbook.  Only displays if user is authenticated.
+    The course progress view.
     """
-    if user.is_authenticated():
-        # since there can be more than one textbook, active_page is e.g. "book/0".
-        return [CourseTab(textbook['tab_title'], reverse('html_book', args=[course.id, index]),
-                          active_page == "htmltextbook/{0}".format(index))
-                for index, textbook in enumerate(course.html_textbooks)]
-    return []
+    type = 'progress'
+    title = ugettext_noop('Progress')
+    priority = 40
+    view_name = 'progress'
+    is_hideable = True
+    is_default = False
 
-def _staff_grading(tab, user, course, active_page):
-    if has_access(user, course, 'staff'):
-        link = reverse('staff_grading', args=[course.id])
-
-        tab_name = "Staff grading"
-
-        notifications  = open_ended_notifications.staff_grading_notifications(course, user)
-        pending_grading = notifications['pending_grading']
-        img_path = notifications['img_path']
-
-        tab = [CourseTab(tab_name, link, active_page == "staff_grading", pending_grading, img_path)]
-        return tab
-    return []
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        if not super(ProgressTab, cls).is_enabled(course, user=user):
+            return False
+        return not course.hide_progress_tab
 
 
-def _peer_grading(tab, user, course, active_page):
-
-    if user.is_authenticated():
-        link = reverse('peer_grading', args=[course.id])
-        tab_name = "Peer grading"
-
-        notifications = open_ended_notifications.peer_grading_notifications(course, user)
-        pending_grading = notifications['pending_grading']
-        img_path = notifications['img_path']
-
-        tab = [CourseTab(tab_name, link, active_page == "peer_grading", pending_grading, img_path)]
-        return tab
-    return []
-
-
-def _combined_open_ended_grading(tab, user, course, active_page):
-    if user.is_authenticated():
-        link = reverse('open_ended_notifications', args=[course.id])
-        tab_name = "Open Ended Panel"
-
-        notifications  = open_ended_notifications.combined_notifications(course, user)
-        pending_grading = notifications['pending_grading']
-        img_path = notifications['img_path']
-
-        tab = [CourseTab(tab_name, link, active_page == "open_ended", pending_grading, img_path)]
-        return tab
-    return []
-
-def _notes_tab(tab, user, course, active_page):
-    if user.is_authenticated() and settings.MITX_FEATURES.get('ENABLE_STUDENT_NOTES'):
-        link = reverse('notes', args=[course.id])
-        return [CourseTab(tab['name'], link, active_page == 'notes')]
-    return []
-
-#### Validators
-
-
-def key_checker(expected_keys):
+class TextbookTabsBase(CourseTab):
     """
-    Returns a function that checks that specified keys are present in a dict
+    Abstract class for textbook collection tabs classes.
     """
-    def check(d):
-        for k in expected_keys:
-            if k not in d:
-                raise InvalidTabsException("Key {0} not present in {1}"
-                                           .format(k, d))
-    return check
+    # Translators: 'Textbooks' refers to the tab in the course that leads to the course' textbooks
+    title = ugettext_noop("Textbooks")
+    is_collection = True
+    is_default = False
+
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        return user is None or user.is_authenticated()
+
+    @classmethod
+    def items(cls, course):
+        """
+        A generator for iterating through all the SingleTextbookTab book objects associated with this
+        collection of textbooks.
+        """
+        raise NotImplementedError()
 
 
-need_name = key_checker(['name'])
-
-
-def null_validator(d):
+class TextbookTabs(TextbookTabsBase):
     """
-    Don't check anything--use for tabs that don't need any params. (e.g. textbook)
+    A tab representing the collection of all textbook tabs.
     """
-    pass
+    type = 'textbooks'
+    priority = None
+    view_name = 'book'
 
-##### The main tab config dict.
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        parent_is_enabled = super(TextbookTabs, cls).is_enabled(course, user)
+        return settings.FEATURES.get('ENABLE_TEXTBOOK') and parent_is_enabled
 
-# type -> TabImpl
-VALID_TAB_TYPES = {
-    'courseware': TabImpl(null_validator, _courseware),
-    'course_info': TabImpl(need_name, _course_info),
-    'wiki': TabImpl(need_name, _wiki),
-    'discussion': TabImpl(need_name, _discussion),
-    'external_link': TabImpl(key_checker(['name', 'link']), _external_link),
-    'textbooks': TabImpl(null_validator, _textbooks),
-    'pdf_textbooks': TabImpl(null_validator, _pdf_textbooks),
-    'html_textbooks': TabImpl(null_validator, _html_textbooks),
-    'progress': TabImpl(need_name, _progress),
-    'static_tab': TabImpl(key_checker(['name', 'url_slug']), _static_tab),
-    'peer_grading': TabImpl(null_validator, _peer_grading),
-    'staff_grading': TabImpl(null_validator, _staff_grading),
-    'open_ended': TabImpl(null_validator, _combined_open_ended_grading),
-    'notes': TabImpl(null_validator, _notes_tab)
-    }
+    @classmethod
+    def items(cls, course):
+        for index, textbook in enumerate(course.textbooks):
+            yield SingleTextbookTab(
+                name=textbook.title,
+                tab_id='textbook/{0}'.format(index),
+                view_name=cls.view_name,
+                index=index
+            )
 
 
-### External interface below this.
-
-def validate_tabs(course):
+class PDFTextbookTabs(TextbookTabsBase):
     """
-    Check that the tabs set for the specified course is valid.  If it
-    isn't, raise InvalidTabsException with the complaint.
-
-    Specific rules checked:
-    - if no tabs specified, that's fine
-    - if tabs specified, first two must have type 'courseware' and 'course_info', in that order.
-    - All the tabs must have a type in VALID_TAB_TYPES.
-
+    A tab representing the collection of all PDF textbook tabs.
     """
-    tabs = course.tabs
-    if tabs is None:
-        return
+    type = 'pdf_textbooks'
+    priority = None
+    view_name = 'pdf_book'
 
-    if len(tabs) < 2:
-        raise InvalidTabsException("Expected at least two tabs.  tabs: '{0}'".format(tabs))
-    if tabs[0]['type'] != 'courseware':
-        raise InvalidTabsException(
-            "Expected first tab to have type 'courseware'.  tabs: '{0}'".format(tabs))
-    if tabs[1]['type'] != 'course_info':
-        raise InvalidTabsException(
-            "Expected second tab to have type 'course_info'.  tabs: '{0}'".format(tabs))
-    for t in tabs:
-        if t['type'] not in VALID_TAB_TYPES:
-            raise InvalidTabsException("Unknown tab type {0}. Known types: {1}"
-                                       .format(t['type'], VALID_TAB_TYPES))
-        # the type-specific validator checks the rest of the tab config
-        VALID_TAB_TYPES[t['type']].validator(t)
-
-    # Possible other checks: make sure tabs that should only appear once (e.g. courseware)
-    # are actually unique (otherwise, will break active tag code)
+    @classmethod
+    def items(cls, course):
+        for index, textbook in enumerate(course.pdf_textbooks):
+            yield SingleTextbookTab(
+                name=textbook['tab_title'],
+                tab_id='pdftextbook/{0}'.format(index),
+                view_name=cls.view_name,
+                index=index
+            )
 
 
-def get_course_tabs(user, course, active_page):
+class HtmlTextbookTabs(TextbookTabsBase):
     """
-    Return the tabs to show a particular user, as a list of CourseTab items.
+    A tab representing the collection of all Html textbook tabs.
     """
-    if not hasattr(course, 'tabs') or not course.tabs:
-        return get_default_tabs(user, course, active_page)
+    type = 'html_textbooks'
+    priority = None
+    view_name = 'html_book'
 
-    # TODO (vshnayder): There needs to be a place to call this right after course
-    # load, but not from inside xmodule, since that doesn't (and probably
-    # shouldn't) know about the details of what tabs are supported, etc.
-    validate_tabs(course)
-
-    tabs = []
-    for tab in course.tabs:
-        # expect handlers to return lists--handles things that are turned off
-        # via feature flags, and things like 'textbook' which might generate
-        # multiple tabs.
-        gen = VALID_TAB_TYPES[tab['type']].generator
-        tabs.extend(gen(tab, user, course, active_page))
-
-    # Instructor tab is special--automatically added if user is staff for the course
-    if has_access(user, course, 'staff'):
-        tabs.append(CourseTab('Instructor',
-                              reverse('instructor_dashboard', args=[course.id]),
-                              active_page == 'instructor'))
-    return tabs
+    @classmethod
+    def items(cls, course):
+        for index, textbook in enumerate(course.html_textbooks):
+            yield SingleTextbookTab(
+                name=textbook['tab_title'],
+                tab_id='htmltextbook/{0}'.format(index),
+                view_name=cls.view_name,
+                index=index
+            )
 
 
-def get_discussion_link(course):
+class LinkTab(CourseTab):
     """
-    Return the URL for the discussion tab for the given `course`.
-
-    If they have a discussion link specified, use that even if we disable
-    discussions. Disabling discsussions is mostly a server safety feature at
-    this point, and we don't need to worry about external sites. Otherwise,
-    if the course has a discussion tab or uses the default tabs, return the
-    discussion view URL. Otherwise, return None to indicate the lack of a
-    discussion tab.
+    Abstract class for tabs that contain external links.
     """
-    if course.discussion_link:
+    link_value = ''
+
+    def __init__(self, tab_dict=None, name=None, link=None):
+        self.link_value = tab_dict['link'] if tab_dict else link
+
+        def link_value_func(_course, _reverse_func):
+            """ Returns the link_value as the link. """
+            return self.link_value
+
+        self.type = tab_dict['type']
+
+        tab_dict['link_func'] = link_value_func
+
+        super(LinkTab, self).__init__(tab_dict)
+
+    def __getitem__(self, key):
+        if key == 'link':
+            return self.link_value
+        else:
+            return super(LinkTab, self).__getitem__(key)
+
+    def __setitem__(self, key, value):
+        if key == 'link':
+            self.link_value = value
+        else:
+            super(LinkTab, self).__setitem__(key, value)
+
+    def to_json(self):
+        to_json_val = super(LinkTab, self).to_json()
+        to_json_val.update({'link': self.link_value})
+        return to_json_val
+
+    def __eq__(self, other):
+        if not super(LinkTab, self).__eq__(other):
+            return False
+        return self.link_value == other.get('link')
+
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        return True
+
+
+class ExternalDiscussionCourseTab(LinkTab):
+    """
+    A course tab that links to an external discussion service.
+    """
+
+    type = 'external_discussion'
+    # Translators: 'Discussion' refers to the tab in the courseware that leads to the discussion forums
+    title = ugettext_noop('Discussion')
+    priority = None
+    is_default = False
+
+    @classmethod
+    def validate(cls, tab_dict, raise_error=True):
+        """ Validate that the tab_dict for this course tab has the necessary information to render. """
+        return (super(ExternalDiscussionCourseTab, cls).validate(tab_dict, raise_error) and
+                key_checker(['link'])(tab_dict, raise_error))
+
+    @classmethod
+    def is_enabled(cls, course, user=None):
+        if not super(ExternalDiscussionCourseTab, cls).is_enabled(course, user=user):
+            return False
         return course.discussion_link
-    elif not settings.MITX_FEATURES.get('ENABLE_DISCUSSION_SERVICE'):
-        return None
-    elif hasattr(course, 'tabs') and course.tabs and not any([tab['type'] == 'discussion' for tab in course.tabs]):
-        return None
-    else:
-        return reverse('django_comment_client.forum.views.forum_form_discussion', args=[course.id])
 
 
-def get_default_tabs(user, course, active_page):
-
-    # When calling the various _tab methods, can omit the 'type':'blah' from the
-    # first arg, since that's only used for dispatch
-    tabs = []
-    tabs.extend(_courseware({''}, user, course, active_page))
-    tabs.extend(_course_info({'name': 'Course Info'}, user, course, active_page))
-
-    if hasattr(course, 'syllabus_present') and course.syllabus_present:
-        link = reverse('syllabus', args=[course.id])
-        tabs.append(CourseTab('Syllabus', link, active_page == 'syllabus'))
-
-    tabs.extend(_textbooks({}, user, course, active_page))
-
-    discussion_link = get_discussion_link(course)
-    if discussion_link:
-        tabs.append(CourseTab('Discussion', discussion_link, active_page == 'discussion'))
-
-    tabs.extend(_wiki({'name': 'Wiki', 'type': 'wiki'}, user, course, active_page))
-
-    if user.is_authenticated() and not course.hide_progress_tab:
-        tabs.extend(_progress({'name': 'Progress'}, user, course, active_page))
-
-    if has_access(user, course, 'staff'):
-        link = reverse('instructor_dashboard', args=[course.id])
-        tabs.append(CourseTab('Instructor', link, active_page == 'instructor'))
-
-    return tabs
-
-
-def get_static_tab_by_slug(course, tab_slug):
+class ExternalLinkCourseTab(LinkTab):
     """
-    Look for a tab with type 'static_tab' and the specified 'tab_slug'.  Returns
-    the tab (a config dict), or None if not found.
+    A course tab containing an external link.
     """
-    if course.tabs is None:
-        return None
-    for tab in course.tabs:
-        # The validation code checks that these exist.
-        if tab['type'] == 'static_tab' and tab['url_slug'] == tab_slug:
-            return tab
+    type = 'external_link'
+    priority = None
+    is_default = False    # An external link tab is not added to a course by default
+    allow_multiple = True
 
-    return None
+    @classmethod
+    def validate(cls, tab_dict, raise_error=True):
+        """ Validate that the tab_dict for this course tab has the necessary information to render. """
+        return (super(ExternalLinkCourseTab, cls).validate(tab_dict, raise_error) and
+                key_checker(['link', 'name'])(tab_dict, raise_error))
 
 
-def get_static_tab_contents(request, course, tab):
+class SingleTextbookTab(CourseTab):
+    """
+    A tab representing a single textbook.  It is created temporarily when enumerating all textbooks within a
+    Textbook collection tab.  It should not be serialized or persisted.
+    """
+    type = 'single_textbook'
+    is_movable = False
+    is_collection_item = True
+    priority = None
 
-    loc = Location(course.location.tag, course.location.org, course.location.course, 'static_tab', tab['url_slug'])
-    model_data_cache = ModelDataCache.cache_for_descriptor_descendents(course.id,
-        request.user, modulestore().get_instance(course.id, loc), depth=0)
-    tab_module = get_module(request.user, request, loc, model_data_cache, course.id)
+    def __init__(self, name, tab_id, view_name, index):
+        def link_func(course, reverse_func, index=index):
+            """ Constructs a link for textbooks from a view name, a course, and an index. """
+            return reverse_func(view_name, args=[unicode(course.id), index])
 
-    logging.debug('course_module = {0}'.format(tab_module))
+        tab_dict = dict()
+        tab_dict['name'] = name
+        tab_dict['tab_id'] = tab_id
+        tab_dict['link_func'] = link_func
+        super(SingleTextbookTab, self).__init__(tab_dict)
 
-    html = ''
+    def to_json(self):
+        raise NotImplementedError('SingleTextbookTab should not be serialized.')
 
-    if tab_module is not None:
-        html = tab_module.get_html()
 
-    return html
+def get_course_tab_list(request, course):
+    """
+    Retrieves the course tab list from xmodule.tabs and manipulates the set as necessary
+    """
+    user = request.user
+    xmodule_tab_list = CourseTabList.iterate_displayable(course, user=user)
+
+    # Now that we've loaded the tabs for this course, perform the Entrance Exam work.
+    # If the user has to take an entrance exam, we'll need to hide away all but the
+    # "Courseware" tab. The tab is then renamed as "Entrance Exam".
+    course_tab_list = []
+    must_complete_ee = not user_can_skip_entrance_exam(user, course)
+    for tab in xmodule_tab_list:
+        if must_complete_ee:
+            # Hide all of the tabs except for 'Courseware'
+            # Rename 'Courseware' tab to 'Entrance Exam'
+            if tab.type != 'courseware':
+                continue
+            tab.name = _("Entrance Exam")
+        # TODO: LEARNER-611 - once the course_info tab is removed, remove this code
+        if UNIFIED_COURSE_TAB_FLAG.is_enabled(course.id) and tab.type == 'course_info':
+                continue
+        if tab.type == 'static_tab' and tab.course_staff_only and \
+                not bool(user and has_access(user, 'staff', course, course.id)):
+            continue
+        course_tab_list.append(tab)
+
+    # Add in any dynamic tabs, i.e. those that are not persisted
+    course_tab_list += _get_dynamic_tabs(course, user)
+    return course_tab_list
+
+
+def _get_dynamic_tabs(course, user):
+    """
+    Returns the dynamic tab types for the current user.
+
+    Note: dynamic tabs are those that are not persisted in the course, but are
+    instead added dynamically based upon the user's role.
+    """
+    dynamic_tabs = list()
+    for tab_type in CourseTabPluginManager.get_tab_types():
+        if getattr(tab_type, "is_dynamic", False):
+            tab = tab_type(dict())
+            if tab.is_enabled(course, user=user):
+                dynamic_tabs.append(tab)
+    dynamic_tabs.sort(key=lambda dynamic_tab: dynamic_tab.name)
+    return dynamic_tabs
